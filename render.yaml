@@ -1,0 +1,239 @@
+# Render Blueprint - Deploy all services
+# https://render.com/docs/blueprint-spec
+
+services:
+  # Auth Service
+  - type: web
+    name: flexwork-auth-service
+    env: docker
+    dockerfilePath: ./apps/auth-service/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: SUPABASE_URL
+        value: https://gzolpmpjsdmghgnzlmju.supabase.co
+      - key: SUPABASE_ANON_KEY
+        value: sb_publishable_yDK3IiBjkkWe-zip73mrLg_-8ZwFqUD
+      - key: SUPABASE_SERVICE_KEY
+        value: sb_secret_ESKMGXIgltbLtCXiJdGwGg_-S7V1Cnn
+      - key: DATABASE_URL
+        value: postgresql://postgres.gzolpmpjsdmghgnzlmju:AuDUZfX9mYCOÇjdo@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+      - key: JWT_SECRET
+        value: CJUl+JvSGEwagzH+xJAdRMACYo+hiqGk23S+101tdOXK9RbjErzjYKAn1I1/oaRpjY3iS3o2xu2F4AleoS7hlA==
+      - key: JWT_REFRESH_SECRET
+        value: XaqFwZXxX+eQSwAPn6v0EL52J9EYpiQkCmv3caMR3w8l2QtWY7wpssY8BIsc+l2+fejoQgBOQz7sOYf4NuEQRg==
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: flexwork-redis
+          property: connectionString
+      - key: CORS_ORIGIN
+        sync: false
+
+  # User Service
+  - type: web
+    name: flexwork-user-service
+    env: docker
+    dockerfilePath: ./apps/user-service/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3002
+      - key: SUPABASE_URL
+        value: https://gzolpmpjsdmghgnzlmju.supabase.co
+      - key: SUPABASE_ANON_KEY
+        value: sb_publishable_yDK3IiBjkkWe-zip73mrLg_-8ZwFqUD
+      - key: SUPABASE_SERVICE_KEY
+        value: sb_secret_ESKMGXIgltbLtCXiJdGwGg_-S7V1Cnn
+      - key: DATABASE_URL
+        value: postgresql://postgres.gzolpmpjsdmghgnzlmju:AuDUZfX9mYCOÇjdo@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+      - key: JWT_SECRET
+        value: CJUl+JvSGEwagzH+xJAdRMACYo+hiqGk23S+101tdOXK9RbjErzjYKAn1I1/oaRpjY3iS3o2xu2F4AleoS7hlA==
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: flexwork-redis
+          property: connectionString
+      - key: CORS_ORIGIN
+        sync: false
+
+  # Project Service
+  - type: web
+    name: flexwork-project-service
+    env: docker
+    dockerfilePath: ./apps/project-service/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3003
+      - key: SUPABASE_URL
+        value: https://gzolpmpjsdmghgnzlmju.supabase.co
+      - key: SUPABASE_ANON_KEY
+        value: sb_publishable_yDK3IiBjkkWe-zip73mrLg_-8ZwFqUD
+      - key: SUPABASE_SERVICE_KEY
+        value: sb_secret_ESKMGXIgltbLtCXiJdGwGg_-S7V1Cnn
+      - key: DATABASE_URL
+        value: postgresql://postgres.gzolpmpjsdmghgnzlmju:AuDUZfX9mYCOÇjdo@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+      - key: JWT_SECRET
+        value: CJUl+JvSGEwagzH+xJAdRMACYo+hiqGk23S+101tdOXK9RbjErzjYKAn1I1/oaRpjY3iS3o2xu2F4AleoS7hlA==
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: flexwork-redis
+          property: connectionString
+      - key: CORS_ORIGIN
+        sync: false
+
+  # Payment Service
+  - type: web
+    name: flexwork-payment-service
+    env: docker
+    dockerfilePath: ./apps/payment-service/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3004
+      - key: SUPABASE_URL
+        value: https://gzolpmpjsdmghgnzlmju.supabase.co
+      - key: SUPABASE_ANON_KEY
+        value: sb_publishable_yDK3IiBjkkWe-zip73mrLg_-8ZwFqUD
+      - key: SUPABASE_SERVICE_KEY
+        value: sb_secret_ESKMGXIgltbLtCXiJdGwGg_-S7V1Cnn
+      - key: DATABASE_URL
+        value: postgresql://postgres.gzolpmpjsdmghgnzlmju:AuDUZfX9mYCOÇjdo@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+      - key: JWT_SECRET
+        value: CJUl+JvSGEwagzH+xJAdRMACYo+hiqGk23S+101tdOXK9RbjErzjYKAn1I1/oaRpjY3iS3o2xu2F4AleoS7hlA==
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+
+  # Message Service
+  - type: web
+    name: flexwork-message-service
+    env: docker
+    dockerfilePath: ./apps/message-service/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3005
+      - key: SUPABASE_URL
+        value: https://gzolpmpjsdmghgnzlmju.supabase.co
+      - key: SUPABASE_ANON_KEY
+        value: sb_publishable_yDK3IiBjkkWe-zip73mrLg_-8ZwFqUD
+      - key: SUPABASE_SERVICE_KEY
+        value: sb_secret_ESKMGXIgltbLtCXiJdGwGg_-S7V1Cnn
+      - key: MONGODB_URI
+        value: mongodb+srv://maheshmsr777_db_user:maheshmsr777_db_user@tulifo.my9vngh.mongodb.net/?appName=tulifo
+      - key: JWT_SECRET
+        value: CJUl+JvSGEwagzH+xJAdRMACYo+hiqGk23S+101tdOXK9RbjErzjYKAn1I1/oaRpjY3iS3o2xu2F4AleoS7hlA==
+      - key: CORS_ORIGIN
+        sync: false
+
+  # Notification Service
+  - type: web
+    name: flexwork-notification-service
+    env: docker
+    dockerfilePath: ./apps/notification-service/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3006
+      - key: SUPABASE_URL
+        value: https://gzolpmpjsdmghgnzlmju.supabase.co
+      - key: SUPABASE_ANON_KEY
+        value: sb_publishable_yDK3IiBjkkWe-zip73mrLg_-8ZwFqUD
+      - key: SUPABASE_SERVICE_KEY
+        value: sb_secret_ESKMGXIgltbLtCXiJdGwGg_-S7V1Cnn
+      - key: MONGODB_URI
+        value: mongodb+srv://maheshmsr777_db_user:maheshmsr777_db_user@tulifo.my9vngh.mongodb.net/?appName=tulifo
+      - key: JWT_SECRET
+        value: CJUl+JvSGEwagzH+xJAdRMACYo+hiqGk23S+101tdOXK9RbjErzjYKAn1I1/oaRpjY3iS3o2xu2F4AleoS7hlA==
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+
+  # Booking Service (Go)
+  - type: web
+    name: flexwork-booking-service
+    env: docker
+    dockerfilePath: ./apps/booking-service/Dockerfile
+    dockerContext: ./apps/booking-service
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 3007
+      - key: SUPABASE_URL
+        value: https://gzolpmpjsdmghgnzlmju.supabase.co
+      - key: SUPABASE_ANON_KEY
+        value: sb_publishable_yDK3IiBjkkWe-zip73mrLg_-8ZwFqUD
+      - key: SUPABASE_SERVICE_KEY
+        value: sb_secret_ESKMGXIgltbLtCXiJdGwGg_-S7V1Cnn
+      - key: DATABASE_URL
+        value: postgresql://postgres.gzolpmpjsdmghgnzlmju:AuDUZfX9mYCOÇjdo@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+      - key: JWT_SECRET
+        value: CJUl+JvSGEwagzH+xJAdRMACYo+hiqGk23S+101tdOXK9RbjErzjYKAn1I1/oaRpjY3iS3o2xu2F4AleoS7hlA==
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: flexwork-redis
+          property: connectionString
+
+  # Matching Service (Python)
+  - type: web
+    name: flexwork-matching-service
+    env: docker
+    dockerfilePath: ./apps/matching-service/Dockerfile
+    dockerContext: ./apps/matching-service
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 3008
+      - key: SUPABASE_URL
+        value: https://gzolpmpjsdmghgnzlmju.supabase.co
+      - key: SUPABASE_ANON_KEY
+        value: sb_publishable_yDK3IiBjkkWe-zip73mrLg_-8ZwFqUD
+      - key: SUPABASE_SERVICE_KEY
+        value: sb_secret_ESKMGXIgltbLtCXiJdGwGg_-S7V1Cnn
+      - key: DATABASE_URL
+        value: postgresql://postgres.gzolpmpjsdmghgnzlmju:AuDUZfX9mYCOÇjdo@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+      - key: MONGODB_URI
+        value: mongodb+srv://maheshmsr777_db_user:maheshmsr777_db_user@tulifo.my9vngh.mongodb.net/?appName=tulifo
+      - key: JWT_SECRET
+        value: CJUl+JvSGEwagzH+xJAdRMACYo+hiqGk23S+101tdOXK9RbjErzjYKAn1I1/oaRpjY3iS3o2xu2F4AleoS7hlA==
+      - key: CORS_ORIGIN
+        sync: false
+
+  # Redis
+  - type: redis
+    name: flexwork-redis
+    plan: starter
+    ipAllowList: []

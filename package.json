@@ -1,0 +1,19 @@
+{
+  "name": "tulifo-gig-backend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm -r run dev",
+    "build": "pnpm -r run build",
+    "build:types": "pnpm --filter @tulifo/types build",
+    "build:shared": "pnpm --filter @tulifo/shared build",
+    "lint": "eslint --ext .ts apps packages",
+    "db:migrate": "node infrastructure/scripts/migrate.js",
+    "db:seed": "node infrastructure/scripts/seed.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3"
+  }
+}

@@ -1,0 +1,153 @@
+version: '3.8'
+
+services:
+  # Node.js Services
+  auth-service:
+    build:
+      context: .
+      dockerfile: apps/auth-service/Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - REDIS_URL=${REDIS_URL}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+    depends_on:
+      - redis
+
+  user-service:
+    build:
+      context: .
+      dockerfile: apps/user-service/Dockerfile
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=production
+      - PORT=3002
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_URL=${REDIS_URL}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+    depends_on:
+      - redis
+
+  project-service:
+    build:
+      context: .
+      dockerfile: apps/project-service/Dockerfile
+    ports:
+      - "3003:3003"
+    environment:
+      - NODE_ENV=production
+      - PORT=3003
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_URL=${REDIS_URL}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+    depends_on:
+      - redis
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: apps/payment-service/Dockerfile
+    ports:
+      - "3004:3004"
+    environment:
+      - NODE_ENV=production
+      - PORT=3004
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+    depends_on:
+      - redis
+
+  message-service:
+    build:
+      context: .
+      dockerfile: apps/message-service/Dockerfile
+    ports:
+      - "3005:3005"
+    environment:
+      - NODE_ENV=production
+      - PORT=3005
+      - MONGODB_URI=${MONGODB_URI}
+      - JWT_SECRET=${JWT_SECRET}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+    depends_on:
+      - redis
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: apps/notification-service/Dockerfile
+    ports:
+      - "3006:3006"
+    environment:
+      - NODE_ENV=production
+      - PORT=3006
+      - MONGODB_URI=${MONGODB_URI}
+      - JWT_SECRET=${JWT_SECRET}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - VAPID_SUBJECT=${VAPID_SUBJECT}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+    depends_on:
+      - redis
+
+  # Go Service
+  booking-service:
+    build:
+      context: ./apps/booking-service
+      dockerfile: Dockerfile
+    ports:
+      - "3007:3007"
+    environment:
+      - PORT=3007
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_URL=${REDIS_URL}
+
+  # Python Service
+  matching-service:
+    build:
+      context: ./apps/matching-service
+      dockerfile: Dockerfile
+    ports:
+      - "3008:3008"
+    environment:
+      - PORT=3008
+      - DATABASE_URL=${DATABASE_URL}
+      - MONGODB_URI=${MONGODB_URI}
+      - JWT_SECRET=${JWT_SECRET}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+
+  # Infrastructure Services (for local development)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+volumes:
+  redis_data:
+  rabbitmq_data:

@@ -1,0 +1,57 @@
+{
+  "version": 2,
+  "buildCommand": "pnpm build",
+  "outputDirectory": "dist",
+  "framework": "other",
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/api/gateway"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "envVars": [
+    {
+      "key": "DATABASE_URL",
+      "scope": "production"
+    },
+    {
+      "key": "MONGODB_URI",
+      "scope": "production"
+    },
+    {
+      "key": "JWT_SECRET",
+      "scope": "production"
+    },
+    {
+      "key": "JWT_REFRESH_SECRET",
+      "scope": "production"
+    },
+    {
+      "key": "REDIS_URL",
+      "scope": "production"
+    },
+    {
+      "key": "AUTH_SERVICE_URL",
+      "scope": "production"
+    },
+    {
+      "key": "USER_SERVICE_URL",
+      "scope": "production"
+    },
+    {
+      "key": "PROJECT_SERVICE_URL",
+      "scope": "production"
+    },
+    {
+      "key": "PAYMENT_SERVICE_URL",
+      "scope": "production"
+    },
+    {
+      "key": "CORS_ORIGIN",
+      "value": "*"
+    }
+  ]
+}

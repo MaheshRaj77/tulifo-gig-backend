@@ -35,7 +35,7 @@ async def close_db():
     if _mongo_client:
         _mongo_client.close()
 
-async def get_postgres_pool():
+def get_postgres_pool():
     return _postgres_pool
 
 def get_mongo_db():

@@ -24,7 +24,6 @@ class MatchingService:
         skills: List[str],
         budget_min: float,
         budget_max: float,
-        duration: str,
         location: Optional[str] = None,
         timezone: Optional[str] = None,
         limit: int = 20
@@ -92,7 +91,7 @@ class MatchingService:
                 try:
                     skill_text = ' '.join(skills)
                     text_score = self.simple_text_similarity(skill_text, row['bio'])
-                except:
+                except Exception:
                     pass
             
             # Weighted score
@@ -206,7 +205,7 @@ class MatchingService:
         if worker['bio'] and project['description']:
             try:
                 text_score = self.simple_text_similarity(worker['bio'], project['description'])
-            except:
+            except Exception:
                 pass
         
         return round(skill_overlap * 0.7 + text_score * 0.3, 3)

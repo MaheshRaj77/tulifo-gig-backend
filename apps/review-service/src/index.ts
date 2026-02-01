@@ -18,7 +18,8 @@ app.get('/health', async (req, res) => {
   try {
     await pgPool.query('SELECT 1');
     res.json({ status: 'healthy', service: 'review-service' });
-  } catch (error) {
+  } catch (error_) {
+    console.error('Health check error:', error_);
     res.status(503).json({ status: 'unhealthy', service: 'review-service' });
   }
 });
@@ -56,8 +57,8 @@ app.post('/api/v1/reviews', async (req, res) => {
     await checkBadgeAchievements(revieweeId);
     
     res.status(201).json(result.rows[0]);
-  } catch (error) {
-    console.error('Failed to create review:', error);
+  } catch (error_) {
+    console.error('Create review error:', error_);
     res.status(500).json({ error: 'Failed to create review' });
   }
 });
@@ -84,11 +85,12 @@ app.get('/api/v1/reviews/user/:userId', async (req, res) => {
     
     res.json({
       reviews: result.rows,
-      total: parseInt(countResult.rows[0].total),
-      limit: parseInt(limit as string),
-      offset: parseInt(offset as string)
+      total: Number.parseInt(countResult.rows[0].total),
+      limit: Number.parseInt(limit as string),
+      offset: Number.parseInt(offset as string)
     });
-  } catch (error) {
+  } catch (error_) {
+    console.error('Get reviews error:', error_);
     res.status(500).json({ error: 'Failed to fetch reviews' });
   }
 });
@@ -111,7 +113,8 @@ app.get('/api/v1/reviews/stats/:userId', async (req, res) => {
     );
     
     res.json(result.rows[0]);
-  } catch (error) {
+  } catch (error_) {
+    console.error('Get stats error:', error_);
     res.status(500).json({ error: 'Failed to fetch review statistics' });
   }
 });
@@ -125,7 +128,8 @@ app.get('/api/v1/badges/:userId', async (req, res) => {
     );
     
     res.json(result.rows);
-  } catch (error) {
+  } catch (error_) {
+    console.error('Get reviews error:', error_);
     res.status(500).json({ error: 'Failed to fetch badges' });
   }
 });
@@ -145,17 +149,17 @@ async function checkBadgeAchievements(userId: string) {
     const { avg_rating, total_reviews } = stats.rows[0];
     
     // 5-star achiever badge (10+ reviews, 5.0 avg)
-    if (total_reviews >= 10 && parseFloat(avg_rating) === 5.0) {
+    if (total_reviews >= 10 && Number.parseFloat(avg_rating) === 5) {
       await awardBadge(userId, 'five_star_achiever', '5-Star Achiever', 'Maintained 5.0 rating with 10+ reviews');
     }
     
     // Top performer badge (50+ reviews, 4.8+ avg)
-    if (total_reviews >= 50 && parseFloat(avg_rating) >= 4.8) {
+    if (total_reviews >= 50 && Number.parseFloat(avg_rating) >= 4.8) {
       await awardBadge(userId, 'top_performer', 'Top Performer', '50+ reviews with 4.8+ average');
     }
     
     // Trusted professional (100+ reviews, 4.5+ avg)
-    if (total_reviews >= 100 && parseFloat(avg_rating) >= 4.5) {
+    if (total_reviews >= 100 && Number.parseFloat(avg_rating) >= 4.5) {
       await awardBadge(userId, 'trusted_professional', 'Trusted Professional', '100+ reviews with excellent ratings');
     }
   } catch (error) {

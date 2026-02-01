@@ -3,7 +3,7 @@ import { ClientService } from '../services/client.service';
 import { logger } from '../utils/logger';
 
 export class ClientController {
-  private clientService: ClientService;
+  private readonly clientService: ClientService;
 
   constructor() {
     this.clientService = new ClientService();
@@ -46,7 +46,7 @@ export class ClientController {
       const projects = await this.clientService.getProjects(
         req.mongodb,
         id,
-        { status, page: parseInt(page), limit: parseInt(limit) }
+        { status, page: Number.parseInt(page), limit: Number.parseInt(limit) }
       );
 
       res.json(projects);

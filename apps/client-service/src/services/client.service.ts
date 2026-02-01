@@ -1,7 +1,6 @@
 import { Pool } from 'pg';
 import { Db, ObjectId } from 'mongodb';
 import Stripe from 'stripe';
-import { logger } from '../utils/logger';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2023-10-16'
@@ -141,7 +140,7 @@ export class ClientService {
   }
 
   async getSpending(pgPool: Pool, clientId: string, filters: any) {
-    const daysAgo = parseInt(filters.period?.replace('d', '') || '30');
+    const daysAgo = Number.parseInt(filters.period?.replace('d', '') || '30');
     const startDate = filters.startDate || new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
     const endDate = filters.endDate || new Date();
 

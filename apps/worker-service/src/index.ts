@@ -142,10 +142,7 @@ app.use((err: Error, req: Request, res: Response, next: any) => {
 });
 
 // Start server after DB initialization
-initializeDB().then(() => {
-  app.listen(PORT, () => {
-    logger.info(`Worker Service running on port ${PORT}`);
-  });
+await initializeDB();
+app.listen(PORT, () => {
+  logger.info(`Worker Service running on port ${PORT}`);
 });
-
-export { mongodb, elasticsearch };

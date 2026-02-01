@@ -74,7 +74,8 @@ app.get('/health', async (_req: Request, res: Response) => {
       try {
         await pgPool.query('SELECT 1');
         dbStatus = { ...dbStatus, postgresql: 'connected' };
-      } catch (err) {
+      } catch (error_) {
+        console.error('PostgreSQL health check error:', error_);
         dbStatus = { ...dbStatus, postgresql: 'disconnected' };
         // Supabase PostgreSQL is optional, don't mark unhealthy
       }
@@ -88,7 +89,8 @@ app.get('/health', async (_req: Request, res: Response) => {
       try {
         await mongodb.admin().ping();
         dbStatus = { ...dbStatus, mongodb: 'connected' };
-      } catch (err) {
+      } catch (error_) {
+        console.error('MongoDB health check error:', error_);
         dbStatus = { ...dbStatus, mongodb: 'disconnected' };
         isHealthy = false; // MongoDB is required
       }
@@ -102,11 +104,12 @@ app.get('/health', async (_req: Request, res: Response) => {
       service: 'client-service',
       ...dbStatus
     });
-  } catch (error) {
+  } catch (error_) {
+    console.error('Health check error:', error_);
     res.status(503).json({ 
       status: 'unhealthy', 
       service: 'client-service',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error_ instanceof Error ? error_.message : 'Unknown error'
     });
   }
 });
@@ -118,10 +121,8 @@ app.use((err: Error, req: Request, res: Response, next: any) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-initializeDB().then(() => {
-  app.listen(PORT, () => {
-    logger.info(`Client Service running on port ${PORT}`);
-  });
+await initializeDB();
+app.listen(PORT, () => {
+  logger.info(`Client Service running on port ${PORT}`);
 });
 
-export { pgPool, mongodb };

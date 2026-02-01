@@ -20,10 +20,66 @@ app.get('/health', async (req, res) => {
   try {
     await esClient.ping();
     res.json({ status: 'healthy', service: 'search-service' });
-  } catch (error) {
+  } catch (error_) {
+    console.error('Health check error:', error_);
     res.status(503).json({ status: 'unhealthy', service: 'search-service' });
   }
 });
+
+// Helper function to build worker search query
+function buildWorkerSearchQuery(params: any) {
+  const { query, skills, minRate, maxRate, minRating, location, availability, categories } = params;
+  const must: any[] = [];
+  const filter: any[] = [];
+  
+  if (query) {
+    must.push({
+      multi_match: {
+        query,
+        fields: ['title^3', 'tagline^2', 'bio', 'skills.name^2'],
+        fuzziness: 'AUTO'
+      }
+    });
+  }
+  
+  if (skills && skills.length > 0) {
+    must.push({
+      nested: {
+        path: 'skills',
+        query: {
+          terms: { 'skills.name.keyword': skills }
+        }
+      }
+    });
+  }
+  
+  if (minRate || maxRate) {
+    const range: any = {};
+    if (minRate) range.gte = minRate;
+    if (maxRate) range.lte = maxRate;
+    filter.push({ range: { hourlyRate: range } });
+  }
+  
+  if (minRating) {
+    filter.push({ range: { averageRating: { gte: minRating } } });
+  }
+  
+  if (location) {
+    must.push({
+      match: { 'location.city': { query: location, fuzziness: 'AUTO' } }
+    });
+  }
+  
+  if (availability) {
+    filter.push({ term: { 'availability.status': availability } });
+  }
+  
+  if (categories && categories.length > 0) {
+    filter.push({ terms: { 'categories.keyword': categories } });
+  }
+  
+  return { must, filter };
+}
 
 // Unified worker search
 app.post('/api/v1/search/workers', async (req, res) => {
@@ -40,61 +96,9 @@ app.post('/api/v1/search/workers', async (req, res) => {
     offset = 0
   } = req.body;
   
-  const must: any[] = [];
-  const filter: any[] = [];
-  
-  // Text search across multiple fields
-  if (query) {
-    must.push({
-      multi_match: {
-        query,
-        fields: ['title^3', 'tagline^2', 'bio', 'skills.name^2'],
-        fuzziness: 'AUTO'
-      }
-    });
-  }
-  
-  // Skills filter (nested)
-  if (skills && skills.length > 0) {
-    must.push({
-      nested: {
-        path: 'skills',
-        query: {
-          terms: { 'skills.name.keyword': skills }
-        }
-      }
-    });
-  }
-  
-  // Hourly rate range
-  if (minRate || maxRate) {
-    const range: any = {};
-    if (minRate) range.gte = minRate;
-    if (maxRate) range.lte = maxRate;
-    filter.push({ range: { hourlyRate: range } });
-  }
-  
-  // Minimum rating
-  if (minRating) {
-    filter.push({ range: { averageRating: { gte: minRating } } });
-  }
-  
-  // Location filter
-  if (location) {
-    must.push({
-      match: { 'location.city': { query: location, fuzziness: 'AUTO' } }
-    });
-  }
-  
-  // Availability filter
-  if (availability) {
-    filter.push({ term: { 'availability.status': availability } });
-  }
-  
-  // Categories
-  if (categories && categories.length > 0) {
-    filter.push({ terms: { 'categories.keyword': categories } });
-  }
+  const { must, filter } = buildWorkerSearchQuery({
+    query, skills, minRate, maxRate, minRating, location, availability, categories
+  });
   
   try {
     const result = await esClient.search({
@@ -214,7 +218,6 @@ app.get('/api/v1/search/suggest', async (req, res) => {
   
   // Ensure q is a string
   if (Array.isArray(q)) q = q[0];
-  if (Array.isArray(field)) field = field[0];
   
   if (!q) {
     return res.status(400).json({ error: 'Query parameter q is required' });

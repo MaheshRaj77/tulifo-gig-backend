@@ -19,7 +19,8 @@ app.get('/health', async (req, res) => {
   try {
     await pgPool.query('SELECT 1');
     res.json({ status: 'healthy', service: 'escrow-service' });
-  } catch (error) {
+  } catch (error_) {
+    console.error('Health check error:', error_);
     res.status(503).json({ status: 'unhealthy', service: 'escrow-service' });
   }
 });
@@ -35,7 +36,8 @@ app.post('/api/v1/escrow', async (req, res) => {
       [bookingId, clientId, workerId, amount]
     );
     res.status(201).json(result.rows[0]);
-  } catch (error) {
+  } catch (error_) {
+    console.error('Create escrow error:', error_);
     res.status(500).json({ error: 'Failed to create escrow account' });
   }
 });
@@ -58,7 +60,8 @@ app.post('/api/v1/escrow/:id/release', async (req, res) => {
     }
     
     res.json(result.rows[0]);
-  } catch (error) {
+  } catch (error_) {
+    console.error('Release escrow error:', error_);
     res.status(500).json({ error: 'Failed to release escrow' });
   }
 });
@@ -71,7 +74,8 @@ app.post('/api/v1/escrow/:id/freeze', async (req, res) => {
       [req.params.id]
     );
     res.json(result.rows[0]);
-  } catch (error) {
+  } catch (error_) {
+    console.error('Freeze escrow error:', error_);
     res.status(500).json({ error: 'Failed to freeze escrow' });
   }
 });

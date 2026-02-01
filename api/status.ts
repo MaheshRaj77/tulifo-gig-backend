@@ -29,10 +29,14 @@ const SERVICES: Record<string, string> = {
 async function checkService(name: string, url: string): Promise<ServiceStatus> {
   const startTime = Date.now();
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
     const response = await fetch(`${url}/health`, {
       method: 'GET',
-      timeout: 5000,
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
     const responseTime = Date.now() - startTime;
     
     if (response.ok) {

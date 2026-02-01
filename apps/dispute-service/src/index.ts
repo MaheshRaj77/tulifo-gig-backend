@@ -20,7 +20,8 @@ app.get('/health', async (req, res) => {
   try {
     await pgPool.query('SELECT 1');
     res.json({ status: 'healthy', service: 'dispute-service' });
-  } catch (error) {
+  } catch (error_) {
+    console.error('Health check error:', error_);
     res.status(503).json({ status: 'unhealthy', service: 'dispute-service' });
   }
 });
@@ -61,7 +62,8 @@ app.get('/api/v1/disputes/:id', async (req, res) => {
     }
     
     res.json(result.rows[0]);
-  } catch (error) {
+  } catch (error_) {
+    console.error('Fetch dispute error:', error_);
     res.status(500).json({ error: 'Failed to fetch dispute' });
   }
 });
@@ -77,7 +79,8 @@ app.get('/api/v1/disputes/user/:userId', async (req, res) => {
     );
     
     res.json(result.rows);
-  } catch (error) {
+  } catch (error_) {
+    console.error('Fetch disputes error:', error_);
     res.status(500).json({ error: 'Failed to fetch disputes' });
   }
 });
@@ -94,7 +97,8 @@ app.post('/api/v1/disputes/:id/evidence', async (req, res) => {
     );
     
     res.status(201).json(result.rows[0]);
-  } catch (error) {
+  } catch (error_) {
+    console.error('Add evidence error:', error_);
     res.status(500).json({ error: 'Failed to add evidence' });
   }
 });
@@ -117,7 +121,8 @@ app.patch('/api/v1/disputes/:id', async (req, res) => {
     }
     
     res.json(result.rows[0]);
-  } catch (error) {
+  } catch (error_) {
+    console.error('Update dispute error:', error_);
     res.status(500).json({ error: 'Failed to update dispute' });
   }
 });

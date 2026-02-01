@@ -1,0 +1,69 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'tulifo-gig-platform'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files:
+  - 'alert_rules.yml'
+
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Kong API Gateway
+  - job_name: 'kong'
+    static_configs:
+      - targets: ['kong:8001']
+    metrics_path: '/metrics'
+
+  # Node.js Services (if they expose metrics)
+  - job_name: 'microservices'
+    static_configs:
+      - targets:
+          - 'auth-service:3001'
+          - 'user-service:3002'
+          - 'project-service:3003'
+          - 'payment-service:3004'
+          - 'notification-service:3005'
+          - 'message-service:3006'
+          - 'booking-service:3007'
+          - 'session-service:3009'
+          - 'worker-service:3010'
+          - 'escrow-service:3011'
+          - 'dispute-service:3012'
+          - 'review-service:3013'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Elasticsearch
+  - job_name: 'elasticsearch'
+    static_configs:
+      - targets: ['elasticsearch:9200']
+    metrics_path: '/_prometheus/metrics'
+
+  # Redis
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+
+  # MongoDB (if exporter is running)
+  - job_name: 'mongodb'
+    static_configs:
+      - targets: ['mongodb-exporter:9216']
+
+  # RabbitMQ
+  - job_name: 'rabbitmq'
+    static_configs:
+      - targets: ['rabbitmq:15672']
+    metrics_path: '/api/metrics'
+    basic_auth:
+      username: 'guest'
+      password: 'guest'

@@ -5,8 +5,8 @@
  * This script verifies connectivity to MongoDB without requiring mongosh CLI
  */
 
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 
 // Load .env file
 function loadEnv() {
@@ -38,55 +38,46 @@ if (!mongoUri) {
 // Try to connect using native Node.js with minimal dependencies
 async function testMongoConnection() {
   try {
-    // Try native MongoDB driver first
-    try {
-      const { MongoClient } = require('mongodb');
-      
-      const client = new MongoClient(mongoUri, {
-        serverSelectionTimeoutMS: 10000,
-        connectTimeoutMS: 10000,
-        socketTimeoutMS: 10000,
-        retryWrites: true,
-      });
-
-      console.log('Connecting to MongoDB Atlas...');
-      await client.connect();
-      
-      // Test the connection with a ping
-      const admin = client.db('admin');
-      await admin.command({ ping: 1 });
-      
-      console.log('✓ MongoDB (Atlas) - Connected');
-      await client.close();
+    // First try local MongoDB
+    const net = require('node:net');
+    const localClient = net.createConnection(27017, 'localhost', () => {
+      console.log('✓ MongoDB (Local) - Connected at localhost:27017');
+      localClient.destroy();
       process.exit(0);
-    } catch (mongoErr) {
-      // If mongodb driver not available, try TCP test on Atlas
+    });
+
+    localClient.on('error', (err) => {
+      // Try Atlas if local fails
+      console.log('Local MongoDB not available, trying Atlas...');
       const url = new URL(mongoUri);
       const host = url.hostname;
       const port = url.port || 27017;
 
       console.log(`Attempting TCP connection to ${host}:${port}...`);
       
-      const net = require('net');
-      const client = net.createConnection(parseInt(port), host, () => {
-        console.log(`✓ MongoDB (Atlas) - Accessible at ${host}:${port}`);
-        client.destroy();
+      const atlasClient = net.createConnection(Number.parseInt(port), host, () => {
+        console.log('✓ MongoDB (Atlas) - Accessible at ' + host + ':' + port);
+        atlasClient.destroy();
         process.exit(0);
       });
 
-      client.on('error', (err) => {
-        console.error('✗ MongoDB (Atlas) - Connection failed:', err.message);
+      atlasClient.on('error', (err) => {
+        console.error('✗ MongoDB - Connection failed:', err.message);
         process.exit(1);
       });
 
       setTimeout(() => {
-        client.destroy();
-        console.error('✗ MongoDB (Atlas) - Connection timeout');
+        atlasClient.destroy();
+        console.error('✗ MongoDB - Connection timeout');
         process.exit(1);
       }, 10000);
-    }
+    });
+
+    setTimeout(() => {
+      localClient.destroy();
+    }, 5000);
   } catch (err) {
-    console.error('✗ MongoDB (Atlas) - Connection failed:', err.message);
+    console.error('✗ MongoDB - Connection failed:', err.message);
     process.exit(1);
   }
 }

@@ -279,7 +279,7 @@ export class WorkerService {
 
   async getAnalytics(db: Db, workerId: string, period: string = '30d') {
     // Calculate analytics based on bookings and sessions
-    const daysAgo = parseInt(period.replace('d', ''));
+    const daysAgo = Number.parseInt(period.replace('d', ''));
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - daysAgo);
 

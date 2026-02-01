@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, text, timestamp, decimal, integer, PgTable } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, text, timestamp, decimal, integer } from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 
 // Escrow accounts table

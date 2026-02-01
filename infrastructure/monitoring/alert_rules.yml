@@ -1,0 +1,227 @@
+groups:
+  - name: tulifo-alerts
+    interval: 30s
+    rules:
+      # Service Availability Alerts
+      - alert: ServiceDown
+        expr: up{job="microservices"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: "{{ $labels.job }}"
+        annotations:
+          summary: "Service {{ $labels.instance }} is down"
+          description: "{{ $labels.instance }} has been unreachable for more than 1 minute"
+
+      - alert: KongDown
+        expr: up{job="kong"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kong API Gateway is down"
+          description: "Kong has been unreachable for more than 1 minute"
+
+      # HTTP Error Rate Alerts
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: "{{ $labels.service }}"
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate (5xx) is {{ $value | humanizePercentage }} for {{ $labels.service }}"
+
+      - alert: CriticalErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: critical
+          component: "{{ $labels.service }}"
+        annotations:
+          summary: "Critical error rate detected"
+          description: "Error rate (5xx) is {{ $value | humanizePercentage }} for {{ $labels.service }}"
+
+      # Request Latency Alerts
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, http_request_duration_seconds_bucket) > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: "{{ $labels.service }}"
+        annotations:
+          summary: "High request latency detected"
+          description: "95th percentile latency is {{ $value }}s for {{ $labels.service }}"
+
+      - alert: CriticalLatency
+        expr: histogram_quantile(0.99, http_request_duration_seconds_bucket) > 5
+        for: 2m
+        labels:
+          severity: critical
+          component: "{{ $labels.service }}"
+        annotations:
+          summary: "Critical request latency detected"
+          description: "99th percentile latency is {{ $value }}s for {{ $labels.service }}"
+
+      # Database Connection Pool Alerts
+      - alert: DatabaseConnectionPoolExhausted
+        expr: database_connection_pool_usage_ratio > 0.9
+        for: 5m
+        labels:
+          severity: critical
+          component: "{{ $labels.database }}"
+        annotations:
+          summary: "Database connection pool nearly exhausted"
+          description: "{{ $labels.database }} connection pool is {{ $value | humanizePercentage }} full"
+
+      - alert: DatabaseConnectionPoolDepleted
+        expr: database_connection_pool_available_count == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: "{{ $labels.database }}"
+        annotations:
+          summary: "Database connection pool depleted"
+          description: "No available connections in {{ $labels.database }} connection pool"
+
+      # Redis Alerts
+      - alert: RedisCacheMisses
+        expr: redis_evicted_keys_total > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Redis cache evictions detected"
+          description: "Redis has evicted {{ $value }} keys in the last 10 minutes"
+
+      - alert: RedisMemoryUsageHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory usage is high"
+          description: "Redis memory usage is {{ $value | humanizePercentage }}"
+
+      # Elasticsearch Alerts
+      - alert: ElasticsearchClusterUnhealthy
+        expr: elasticsearch_cluster_health_status{color="red"} == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Elasticsearch cluster is red"
+          description: "Elasticsearch cluster status is RED - data may be lost"
+
+      - alert: ElasticsearchHighDiskUsage
+        expr: elasticsearch_fs_data_used_bytes / elasticsearch_fs_data_total_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elasticsearch disk usage is high"
+          description: "Elasticsearch disk usage is {{ $value | humanizePercentage }}"
+
+      # Queue Processing Alerts
+      - alert: HighQueueBacklog
+        expr: rabbitmq_queue_messages > 10000
+        for: 5m
+        labels:
+          severity: warning
+          queue: "{{ $labels.queue }}"
+        annotations:
+          summary: "High queue backlog detected"
+          description: "Queue {{ $labels.queue }} has {{ $value }} unprocessed messages"
+
+      - alert: ConsumerStalled
+        expr: rate(rabbitmq_messages_acked_total[5m]) < 0.1 and rabbitmq_queue_messages > 1000
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Message consumer appears stalled"
+          description: "Consumer for {{ $labels.queue }} is not processing messages"
+
+      # Authentication/Authorization Failures
+      - alert: HighAuthenticationFailureRate
+        expr: rate(http_requests_total{status="401"}[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High authentication failure rate"
+          description: "Authentication failures are {{ $value | humanizePercentage }} of requests"
+
+      - alert: HighAuthorizationFailureRate
+        expr: rate(http_requests_total{status="403"}[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High authorization failure rate"
+          description: "Authorization failures are {{ $value | humanizePercentage }} of requests"
+
+      # Payment Processing Alerts
+      - alert: PaymentProcessingFailure
+        expr: rate(payment_processing_failures_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          component: payment-service
+        annotations:
+          summary: "High payment processing failure rate"
+          description: "Payment processing failure rate is {{ $value | humanizePercentage }}"
+
+      # Booking Service Alerts
+      - alert: BookingQueueBuildup
+        expr: bookings_pending_count > 100
+        for: 10m
+        labels:
+          severity: warning
+          component: booking-service
+        annotations:
+          summary: "High pending bookings buildup"
+          description: "{{ $value }} bookings are pending processing"
+
+      # System Resource Alerts
+      - alert: HighMemoryUsage
+        expr: container_memory_usage_bytes / container_spec_memory_limit_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          container: "{{ $labels.name }}"
+        annotations:
+          summary: "High memory usage in {{ $labels.name }}"
+          description: "Memory usage is {{ $value | humanizePercentage }}"
+
+      - alert: HighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          container: "{{ $labels.name }}"
+        annotations:
+          summary: "High CPU usage in {{ $labels.name }}"
+          description: "CPU usage is {{ $value | humanizePercentage }}"
+
+      # Disk Space Alerts
+      - alert: LowDiskSpace
+        expr: node_filesystem_avail_bytes / node_filesystem_size_bytes < 0.15
+        for: 5m
+        labels:
+          severity: warning
+          filesystem: "{{ $labels.mountpoint }}"
+        annotations:
+          summary: "Low disk space on {{ $labels.mountpoint }}"
+          description: "Only {{ $value | humanizePercentage }} disk space remaining"
+
+      - alert: CriticalDiskSpace
+        expr: node_filesystem_avail_bytes / node_filesystem_size_bytes < 0.05
+        for: 1m
+        labels:
+          severity: critical
+          filesystem: "{{ $labels.mountpoint }}"
+        annotations:
+          summary: "Critical disk space on {{ $labels.mountpoint }}"
+          description: "Only {{ $value | humanizePercentage }} disk space remaining"

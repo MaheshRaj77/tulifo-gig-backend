@@ -5,9 +5,9 @@
  * This script verifies connectivity to Supabase without requiring psql
  */
 
-const fs = require('fs');
-const path = require('path');
-const https = require('https');
+const fs = require('node:fs');
+const path = require('node:path');
+const https = require('node:https');
 
 // Load .env file
 function loadEnv() {
@@ -48,7 +48,8 @@ function parsePostgresURL(url) {
     const [port, database] = portAndDb.split('/');
     
     return { username, password, host, port, database };
-  } catch (e) {
+  } catch (error_) {
+    console.error('Error resolving Supabase URL:', error_);
     return null;
   }
 }
@@ -71,8 +72,8 @@ function testSupabaseConnection() {
     console.log('However, DATABASE_URL is set to:', parsed.host);
     
     // Try TCP port test instead
-    const net = require('net');
-    const client = net.createConnection(parseInt(parsed.port), parsed.host);
+    const net = require('node:net');
+    const client = net.createConnection(Number.parseInt(parsed.port), parsed.host);
     
     client.on('connect', () => {
       console.log('✓ PostgreSQL (Supabase pooler) is accessible at', parsed.host + ':' + parsed.port);
@@ -95,8 +96,6 @@ function testSupabaseConnection() {
   }
 
   // Test Supabase API health
-  const apiUrl = new URL(supabaseUrl);
-  
   https.get(`${supabaseUrl}/rest/v1/`, {
     headers: {
       'apikey': supabaseKey,

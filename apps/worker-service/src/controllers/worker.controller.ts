@@ -1,9 +1,9 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { WorkerService } from '../services/worker.service';
 import { logger } from '../utils/logger';
 
 export class WorkerController {
-  private workerService: WorkerService;
+  private readonly workerService: WorkerService;
 
   constructor() {
     this.workerService = new WorkerService();
@@ -13,13 +13,13 @@ export class WorkerController {
     try {
       const filters = {
         skills: req.query.skills?.split(','),
-        minRate: req.query.minRate ? parseFloat(req.query.minRate) : undefined,
-        maxRate: req.query.maxRate ? parseFloat(req.query.maxRate) : undefined,
-        minRating: req.query.minRating ? parseFloat(req.query.minRating) : undefined,
+        minRate: req.query.minRate ? Number.parseFloat(req.query.minRate) : undefined,
+        maxRate: req.query.maxRate ? Number.parseFloat(req.query.maxRate) : undefined,
+        minRating: req.query.minRating ? Number.parseFloat(req.query.minRating) : undefined,
         availability: req.query.availability,
         location: req.query.location,
-        page: parseInt(req.query.page || '1'),
-        limit: parseInt(req.query.limit || '20')
+        page: Number.parseInt(req.query.page || '1'),
+        limit: Number.parseInt(req.query.limit || '20')
       };
 
       const result = await this.workerService.searchWorkers(

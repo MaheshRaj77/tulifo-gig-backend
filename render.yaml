@@ -1,10 +1,13 @@
-# Render Blueprint - Deploy all services
+# Render Blueprint - Deploy all 15 services + Redis
+# Single deployment for development (not recommended for production)
 # https://render.com/docs/blueprint-spec
 
 services:
-  # Auth Service
+  # ==================== PostgreSQL Services (8) ====================
+
+  # Auth Service (3001)
   - type: web
-    name: flexwork-auth-service
+    name: auth-service
     env: docker
     dockerfilePath: ./apps/auth-service/Dockerfile
     dockerContext: .
@@ -14,29 +17,18 @@ services:
         value: production
       - key: PORT
         value: 3001
-      - key: SUPABASE_URL
-        value: https://gzolpmpjsdmghgnzlmju.supabase.co
-      - key: SUPABASE_ANON_KEY
-        value: sb_publishable_yDK3IiBjkkWe-zip73mrLg_-8ZwFqUD
-      - key: SUPABASE_SERVICE_KEY
-        value: sb_secret_ESKMGXIgltbLtCXiJdGwGg_-S7V1Cnn
       - key: DATABASE_URL
-        value: postgresql://postgres.gzolpmpjsdmghgnzlmju:AuDUZfX9mYCOÇjdo@aws-0-us-east-1.pooler.supabase.com:6543/postgres
-      - key: JWT_SECRET
-        value: CJUl+JvSGEwagzH+xJAdRMACYo+hiqGk23S+101tdOXK9RbjErzjYKAn1I1/oaRpjY3iS3o2xu2F4AleoS7hlA==
-      - key: JWT_REFRESH_SECRET
-        value: XaqFwZXxX+eQSwAPn6v0EL52J9EYpiQkCmv3caMR3w8l2QtWY7wpssY8BIsc+l2+fejoQgBOQz7sOYf4NuEQRg==
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: flexwork-redis
-          property: connectionString
-      - key: CORS_ORIGIN
         sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: CORS_ORIGIN
+        value: "*"
 
-  # User Service
+  # User Service (3002)
   - type: web
-    name: flexwork-user-service
+    name: user-service
     env: docker
     dockerfilePath: ./apps/user-service/Dockerfile
     dockerContext: .
@@ -46,27 +38,16 @@ services:
         value: production
       - key: PORT
         value: 3002
-      - key: SUPABASE_URL
-        value: https://gzolpmpjsdmghgnzlmju.supabase.co
-      - key: SUPABASE_ANON_KEY
-        value: sb_publishable_yDK3IiBjkkWe-zip73mrLg_-8ZwFqUD
-      - key: SUPABASE_SERVICE_KEY
-        value: sb_secret_ESKMGXIgltbLtCXiJdGwGg_-S7V1Cnn
       - key: DATABASE_URL
-        value: postgresql://postgres.gzolpmpjsdmghgnzlmju:AuDUZfX9mYCOÇjdo@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+        sync: false
       - key: JWT_SECRET
-        value: CJUl+JvSGEwagzH+xJAdRMACYo+hiqGk23S+101tdOXK9RbjErzjYKAn1I1/oaRpjY3iS3o2xu2F4AleoS7hlA==
+        sync: false
       - key: REDIS_URL
         fromService:
           type: redis
-          name: flexwork-redis
+          name: tulifo-redis
           property: connectionString
-      - key: CORS_ORIGIN
-        sync: false
-
-  # Project Service
-  - type: web
-    name: flexwork-project-service
+      - key: ject-service
     env: docker
     dockerfilePath: ./apps/project-service/Dockerfile
     dockerContext: .
@@ -76,27 +57,16 @@ services:
         value: production
       - key: PORT
         value: 3003
-      - key: SUPABASE_URL
-        value: https://gzolpmpjsdmghgnzlmju.supabase.co
-      - key: SUPABASE_ANON_KEY
-        value: sb_publishable_yDK3IiBjkkWe-zip73mrLg_-8ZwFqUD
-      - key: SUPABASE_SERVICE_KEY
-        value: sb_secret_ESKMGXIgltbLtCXiJdGwGg_-S7V1Cnn
       - key: DATABASE_URL
-        value: postgresql://postgres.gzolpmpjsdmghgnzlmju:AuDUZfX9mYCOÇjdo@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+        sync: false
       - key: JWT_SECRET
-        value: CJUl+JvSGEwagzH+xJAdRMACYo+hiqGk23S+101tdOXK9RbjErzjYKAn1I1/oaRpjY3iS3o2xu2F4AleoS7hlA==
+        sync: false
       - key: REDIS_URL
         fromService:
           type: redis
-          name: flexwork-redis
+          name: tulifo-redis
           property: connectionString
-      - key: CORS_ORIGIN
-        sync: false
-
-  # Payment Service
-  - type: web
-    name: flexwork-payment-service
+      - key: ment-service
     env: docker
     dockerfilePath: ./apps/payment-service/Dockerfile
     dockerContext: .
@@ -106,26 +76,104 @@ services:
         value: production
       - key: PORT
         value: 3004
-      - key: SUPABASE_URL
-        value: https://gzolpmpjsdmghgnzlmju.supabase.co
-      - key: SUPABASE_ANON_KEY
-        value: sb_publishable_yDK3IiBjkkWe-zip73mrLg_-8ZwFqUD
-      - key: SUPABASE_SERVICE_KEY
-        value: sb_secret_ESKMGXIgltbLtCXiJdGwGg_-S7V1Cnn
       - key: DATABASE_URL
-        value: postgresql://postgres.gzolpmpjsdmghgnzlmju:AuDUZfX9mYCOÇjdo@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+        sync: false
       - key: JWT_SECRET
-        value: CJUl+JvSGEwagzH+xJAdRMACYo+hiqGk23S+101tdOXK9RbjErzjYKAn1I1/oaRpjY3iS3o2xu2F4AleoS7hlA==
+        sync: false
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: tulifo-redis
+          property: connectionString
       - key: CORS_ORIGIN
-        sync: false
+        value: "*"
 
-  # Message Service
+  # Escrow Service (3012)
   - type: web
-    name: flexwork-message-service
+    name: esc
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3012
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: tulifo-redis
+          property: connectionString
+      - key: CORS_ORIGIN
+        value: "*"
+
+  # Dispute Service (3013)
+  - type: web
+    name: dis
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3013
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ESCROW_SERVICE_URL
+        value: "http://escrow-service.onrender.com"
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: tulifo-redis
+          property: connectionString
+      - key: CORS_ORIGIN
+        value: "*"
+
+  # Review Service (3014)
+  - type: web
+    name: review-service
+    env: docker
+    dockerfilePath: ./apps/review-service/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: tulifo-redis
+          property: connectionString
+      - key: CORS_ORIGIN
+        value: "*"
+
+  # Client Service (3011)
+  - type: web
+    name: client-service
+    env: docker
+    dockerfilePath: ./apps/client-service/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:DATABASE_URL
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: CORS_ORIGIN
+        value: "*"
+
+  # ==================== MongoDB Services (3) ====================
+
+  # Message Service (3005)
+  - type: web
+    name: message-service
     env: docker
     dockerfilePath: ./apps/message-service/Dockerfile
     dockerContext: .
@@ -135,22 +183,16 @@ services:
         value: production
       - key: PORT
         value: 3005
-      - key: SUPABASE_URL
-        value: https://gzolpmpjsdmghgnzlmju.supabase.co
-      - key: SUPABASE_ANON_KEY
-        value: sb_publishable_yDK3IiBjkkWe-zip73mrLg_-8ZwFqUD
-      - key: SUPABASE_SERVICE_KEY
-        value: sb_secret_ESKMGXIgltbLtCXiJdGwGg_-S7V1Cnn
       - key: MONGODB_URI
-        value: mongodb+srv://maheshmsr777_db_user:maheshmsr777_db_user@tulifo.my9vngh.mongodb.net/?appName=tulifo
-      - key: JWT_SECRET
-        value: CJUl+JvSGEwagzH+xJAdRMACYo+hiqGk23S+101tdOXK9RbjErzjYKAn1I1/oaRpjY3iS3o2xu2F4AleoS7hlA==
-      - key: CORS_ORIGIN
         sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGIN
+        value: "*"
 
-  # Notification Service
+  # Notification Service (3006)
   - type: web
-    name: flexwork-notification-service
+    name: notification-service
     env: docker
     dockerfilePath: ./apps/notification-service/Dockerfile
     dockerContext: .
@@ -160,16 +202,10 @@ services:
         value: production
       - key: PORT
         value: 3006
-      - key: SUPABASE_URL
-        value: https://gzolpmpjsdmghgnzlmju.supabase.co
-      - key: SUPABASE_ANON_KEY
-        value: sb_publishable_yDK3IiBjkkWe-zip73mrLg_-8ZwFqUD
-      - key: SUPABASE_SERVICE_KEY
-        value: sb_secret_ESKMGXIgltbLtCXiJdGwGg_-S7V1Cnn
       - key: MONGODB_URI
-        value: mongodb+srv://maheshmsr777_db_user:maheshmsr777_db_user@tulifo.my9vngh.mongodb.net/?appName=tulifo
+        sync: false
       - key: JWT_SECRET
-        value: CJUl+JvSGEwagzH+xJAdRMACYo+hiqGk23S+101tdOXK9RbjErzjYKAn1I1/oaRpjY3iS3o2xu2F4AleoS7hlA==
+        sync: false
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
@@ -178,12 +214,45 @@ services:
         sync: false
       - key: SMTP_PASS
         sync: false
-      - key: CORS_ORIGIN
+      - key: VAPID_SUBJECT
         sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: tulifo-redis
+          property: connectionString
+      - key: CORS_ORIGIN
+        value: "*"
 
-  # Booking Service (Go)
+  # Worker Service (3010)
   - type: web
-    name: flexwork-booking-service
+    name: worker-service
+    env: docker
+    dockerfilePath: ./apps/worker-service/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3010
+      - key: : elastic
+      - key: ELASTICSEARCH_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGIN
+        value: "*"
+
+  # ==================== Special Services (4) ====================
+
+  # Booking Service - Go (3007)
+  - type: web
+    name: booking-service
     env: docker
     dockerfilePath: ./apps/booking-service/Dockerfile
     dockerContext: ./apps/booking-service
@@ -191,25 +260,19 @@ services:
     envVars:
       - key: PORT
         value: 3007
-      - key: SUPABASE_URL
-        value: https://gzolpmpjsdmghgnzlmju.supabase.co
-      - key: SUPABASE_ANON_KEY
-        value: sb_publishable_yDK3IiBjkkWe-zip73mrLg_-8ZwFqUD
-      - key: SUPABASE_SERVICE_KEY
-        value: sb_secret_ESKMGXIgltbLtCXiJdGwGg_-S7V1Cnn
       - key: DATABASE_URL
-        value: postgresql://postgres.gzolpmpjsdmghgnzlmju:AuDUZfX9mYCOÇjdo@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+        sync: false
       - key: JWT_SECRET
-        value: CJUl+JvSGEwagzH+xJAdRMACYo+hiqGk23S+101tdOXK9RbjErzjYKAn1I1/oaRpjY3iS3o2xu2F4AleoS7hlA==
+        sync: false
       - key: REDIS_URL
         fromService:
           type: redis
-          name: flexwork-redis
+          name: tulifo-redis
           property: connectionString
 
-  # Matching Service (Python)
+  # Matching Service - Python (3008)
   - type: web
-    name: flexwork-matching-service
+    name: matching-service
     env: docker
     dockerfilePath: ./apps/matching-service/Dockerfile
     dockerContext: ./apps/matching-service
@@ -217,23 +280,59 @@ services:
     envVars:
       - key: PORT
         value: 3008
-      - key: SUPABASE_URL
-        value: https://gzolpmpjsdmghgnzlmju.supabase.co
-      - key: SUPABASE_ANON_KEY
-        value: sb_publishable_yDK3IiBjkkWe-zip73mrLg_-8ZwFqUD
-      - key: SUPABASE_SERVICE_KEY
-        value: sb_secret_ESKMGXIgltbLtCXiJdGwGg_-S7V1Cnn
       - key: DATABASE_URL
-        value: postgresql://postgres.gzolpmpjsdmghgnzlmju:AuDUZfX9mYCOÇjdo@aws-0-us-east-1.pooler.supabase.com:6543/postgres
-      - key: MONGODB_URI
-        value: mongodb+srv://maheshmsr777_db_user:maheshmsr777_db_user@tulifo.my9vngh.mongodb.net/?appName=tulifo
-      - key: JWT_SECRET
-        value: CJUl+JvSGEwagzH+xJAdRMACYo+hiqGk23S+101tdOXK9RbjErzjYKAn1I1/oaRpjY3iS3o2xu2F4AleoS7hlA==
-      - key: CORS_ORIGIN
         sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGIN
+        value: "*"
 
-  # Redis
+  # Session Service (3009)
+  - type: web
+    name: session-service
+    env: docker
+    dockerfilePath: ./apps/session-service/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3009
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: tulifo-redis
+          property: connectionString
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGIN
+        value: "*"
+
+  # Search Service (3015)
+  - type: web
+    name: search-service
+    env: docker
+    dockerfilePath: ./apps/search-service/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: : elastic
+      - key: ELASTICSEARCH_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGIN
+        value: "*"
+
+  # ==================== Infrastructure ====================
+
+  # Redis - Shared cache for all services
   - type: redis
-    name: flexwork-redis
+    name: tulifo-redis
     plan: starter
     ipAllowList: []

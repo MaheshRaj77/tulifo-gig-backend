@@ -3,12 +3,14 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"time"
 
+	"booking-service/internal/models"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"booking-service/internal/models"
 )
 
 type AvailabilityService struct {

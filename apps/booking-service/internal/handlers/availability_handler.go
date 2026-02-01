@@ -1,12 +1,14 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"booking-service/internal/services"
 	"booking-service/internal/models"
+	"booking-service/internal/services"
+
+	"github.com/gin-gonic/gin"
 )
 
 type AvailabilityHandler struct {

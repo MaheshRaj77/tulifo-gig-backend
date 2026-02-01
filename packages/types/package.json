@@ -8,6 +8,13 @@
     "dev": "tsc --watch"
   },
   "devDependencies": {
+    "@types/node": "^20.19.30",
+    "dotenv": "^16.6.1",
+    "drizzle-kit": "^0.31.8",
+    "drizzle-zod": "^0.8.3",
     "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "postgres": "^3.4.8"
   }
 }

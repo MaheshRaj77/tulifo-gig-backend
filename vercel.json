@@ -1,11 +1,23 @@
 {
   "version": 2,
   "buildCommand": "pnpm build",
-  "outputDirectory": "dist",
+  "outputDirectory": ".",
   "framework": "other",
   "routes": [
     {
-      "src": "/(.*)",
+      "src": "/$",
+      "dest": "/api/index"
+    },
+    {
+      "src": "/status(.*)",
+      "dest": "/api/status"
+    },
+    {
+      "src": "/api(.*)",
+      "dest": "/api/gateway"
+    },
+    {
+      "src": "/health(.*)",
       "dest": "/api/gateway"
     }
   ],
@@ -47,6 +59,46 @@
     },
     {
       "key": "PAYMENT_SERVICE_URL",
+      "scope": "production"
+    },
+    {
+      "key": "MESSAGE_SERVICE_URL",
+      "scope": "production"
+    },
+    {
+      "key": "NOTIFICATION_SERVICE_URL",
+      "scope": "production"
+    },
+    {
+      "key": "BOOKING_SERVICE_URL",
+      "scope": "production"
+    },
+    {
+      "key": "MATCHING_SERVICE_URL",
+      "scope": "production"
+    },
+    {
+      "key": "SESSION_SERVICE_URL",
+      "scope": "production"
+    },
+    {
+      "key": "WORKER_SERVICE_URL",
+      "scope": "production"
+    },
+    {
+      "key": "ESCROW_SERVICE_URL",
+      "scope": "production"
+    },
+    {
+      "key": "DISPUTE_SERVICE_URL",
+      "scope": "production"
+    },
+    {
+      "key": "REVIEW_SERVICE_URL",
+      "scope": "production"
+    },
+    {
+      "key": "SEARCH_SERVICE_URL",
       "scope": "production"
     },
     {

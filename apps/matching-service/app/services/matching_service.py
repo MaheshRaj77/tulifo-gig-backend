@@ -1,17 +1,23 @@
 from typing import List, Optional, Dict
-import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.feature_extraction.text import TfidfVectorizer
 import asyncpg
-import os
 
 from app.services.database import get_postgres_pool
 
 class MatchingService:
     def __init__(self):
-        self.vectorizer = TfidfVectorizer(stop_words='english')
         self._skills_vectors = None
         self._workers_cache = {}
+    
+    @staticmethod
+    def simple_text_similarity(text1: str, text2: str) -> float:
+        """Simple text similarity using token overlap (Jaccard similarity)"""
+        tokens1 = set(text1.lower().split())
+        tokens2 = set(text2.lower().split())
+        if not tokens1 or not tokens2:
+            return 0.0
+        intersection = len(tokens1 & tokens2)
+        union = len(tokens1 | tokens2)
+        return intersection / union if union > 0 else 0.0
     
     async def find_matches(
         self,
@@ -85,9 +91,7 @@ class MatchingService:
             if row['bio']:
                 try:
                     skill_text = ' '.join(skills)
-                    texts = [skill_text, row['bio']]
-                    tfidf_matrix = self.vectorizer.fit_transform(texts)
-                    text_score = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
+                    text_score = self.simple_text_similarity(skill_text, row['bio'])
                 except:
                     pass
             
@@ -201,9 +205,7 @@ class MatchingService:
         text_score = 0
         if worker['bio'] and project['description']:
             try:
-                texts = [worker['bio'], project['description']]
-                tfidf_matrix = self.vectorizer.fit_transform(texts)
-                text_score = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
+                text_score = self.simple_text_similarity(worker['bio'], project['description'])
             except:
                 pass
         

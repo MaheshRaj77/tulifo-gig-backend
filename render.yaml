@@ -1,5 +1,4 @@
-# Render Blueprint - Deploy all 15 services + Redis
-# Single deployment for development (not recommended for production)
+# Render Blueprint - Deploy all 14 microservices
 # https://render.com/docs/blueprint-spec
 
 services:
@@ -12,6 +11,9 @@ services:
     dockerfilePath: ./apps/auth-service/Dockerfile
     dockerContext: .
     healthCheckPath: /health
+    routes:
+      - src: /api/auth
+        dest: /api/auth
     envVars:
       - key: NODE_ENV
         value: production
@@ -33,6 +35,9 @@ services:
     dockerfilePath: ./apps/user-service/Dockerfile
     dockerContext: .
     healthCheckPath: /health
+    routes:
+      - src: /api/users
+        dest: /api/users
     envVars:
       - key: NODE_ENV
         value: production
@@ -42,16 +47,19 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: tulifo-redis
-          property: connectionString
-      - key: ject-service
+      - key: CORS_ORIGIN
+        value: "*"
+
+  # Project Service (3003)
+  - type: web
+    name: project-service
     env: docker
     dockerfilePath: ./apps/project-service/Dockerfile
     dockerContext: .
     healthCheckPath: /health
+    routes:
+      - src: /api/projects
+        dest: /api/projects
     envVars:
       - key: NODE_ENV
         value: production
@@ -61,16 +69,19 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: tulifo-redis
-          property: connectionString
-      - key: ment-service
+      - key: CORS_ORIGIN
+        value: "*"
+
+  # Payment Service (3004)
+  - type: web
+    name: payment-service
     env: docker
     dockerfilePath: ./apps/payment-service/Dockerfile
     dockerContext: .
     healthCheckPath: /health
+    routes:
+      - src: /api/payments
+        dest: /api/payments
     envVars:
       - key: NODE_ENV
         value: production
@@ -84,17 +95,20 @@ services:
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: tulifo-redis
-          property: connectionString
       - key: CORS_ORIGIN
         value: "*"
 
   # Escrow Service (3012)
   - type: web
-    name: esc
+    name: escrow-service
+    env: docker
+    dockerfilePath: ./apps/escrow-service/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    routes:
+      - src: /api/escrow
+        dest: /api/escrow
+    envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
@@ -103,17 +117,20 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: tulifo-redis
-          property: connectionString
       - key: CORS_ORIGIN
         value: "*"
 
   # Dispute Service (3013)
   - type: web
-    name: dis
+    name: dispute-service
+    env: docker
+    dockerfilePath: ./apps/dispute-service/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    routes:
+      - src: /api/disputes
+        dest: /api/disputes
+    envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
@@ -124,11 +141,6 @@ services:
         sync: false
       - key: ESCROW_SERVICE_URL
         value: "http://escrow-service.onrender.com"
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: tulifo-redis
-          property: connectionString
       - key: CORS_ORIGIN
         value: "*"
 
@@ -139,15 +151,18 @@ services:
     dockerfilePath: ./apps/review-service/Dockerfile
     dockerContext: .
     healthCheckPath: /health
-    envVars:DATABASE_URL
+    routes:
+      - src: /api/reviews
+        dest: /api/reviews
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3014
+      - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
         sync: false
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: tulifo-redis
-          property: connectionString
       - key: CORS_ORIGIN
         value: "*"
 
@@ -158,7 +173,15 @@ services:
     dockerfilePath: ./apps/client-service/Dockerfile
     dockerContext: .
     healthCheckPath: /health
-    envVars:DATABASE_URL
+    routes:
+      - src: /api/clients
+        dest: /api/clients
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3011
+      - key: DATABASE_URL
         sync: false
       - key: MONGODB_URI
         sync: false
@@ -178,6 +201,9 @@ services:
     dockerfilePath: ./apps/message-service/Dockerfile
     dockerContext: .
     healthCheckPath: /health
+    routes:
+      - src: /api/messages
+        dest: /api/messages
     envVars:
       - key: NODE_ENV
         value: production
@@ -197,6 +223,9 @@ services:
     dockerfilePath: ./apps/notification-service/Dockerfile
     dockerContext: .
     healthCheckPath: /health
+    routes:
+      - src: /api/notifications
+        dest: /api/notifications
     envVars:
       - key: NODE_ENV
         value: production
@@ -220,11 +249,6 @@ services:
         sync: false
       - key: VAPID_PRIVATE_KEY
         sync: false
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: tulifo-redis
-          property: connectionString
       - key: CORS_ORIGIN
         value: "*"
 
@@ -235,12 +259,20 @@ services:
     dockerfilePath: ./apps/worker-service/Dockerfile
     dockerContext: .
     healthCheckPath: /health
+    routes:
+      - src: /api/workers
+        dest: /api/workers
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 3010
-      - key: : elastic
+      - key: MONGODB_URI
+        sync: false
+      - key: ELASTICSEARCH_URL
+        sync: false
+      - key: ELASTICSEARCH_USER
+        value: elastic
       - key: ELASTICSEARCH_PASSWORD
         sync: false
       - key: JWT_SECRET
@@ -257,6 +289,9 @@ services:
     dockerfilePath: ./apps/booking-service/Dockerfile
     dockerContext: ./apps/booking-service
     healthCheckPath: /health
+    routes:
+      - src: /api/bookings
+        dest: /api/bookings
     envVars:
       - key: PORT
         value: 3007
@@ -264,11 +299,6 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: tulifo-redis
-          property: connectionString
 
   # Matching Service - Python (3008)
   - type: web
@@ -277,6 +307,9 @@ services:
     dockerfilePath: ./apps/matching-service/Dockerfile
     dockerContext: ./apps/matching-service
     healthCheckPath: /health
+    routes:
+      - src: /api/matching
+        dest: /api/matching
     envVars:
       - key: PORT
         value: 3008
@@ -296,16 +329,14 @@ services:
     dockerfilePath: ./apps/session-service/Dockerfile
     dockerContext: .
     healthCheckPath: /health
+    routes:
+      - src: /api/sessions
+        dest: /api/sessions
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 3009
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: tulifo-redis
-          property: connectionString
       - key: JWT_SECRET
         sync: false
       - key: CORS_ORIGIN
@@ -318,10 +349,18 @@ services:
     dockerfilePath: ./apps/search-service/Dockerfile
     dockerContext: .
     healthCheckPath: /health
+    routes:
+      - src: /api/search
+        dest: /api/search
     envVars:
       - key: NODE_ENV
         value: production
-      - key: : elastic
+      - key: PORT
+        value: 3015
+      - key: ELASTICSEARCH_URL
+        sync: false
+      - key: ELASTICSEARCH_USER
+        value: elastic
       - key: ELASTICSEARCH_PASSWORD
         sync: false
       - key: JWT_SECRET
@@ -331,8 +370,8 @@ services:
 
   # ==================== Infrastructure ====================
 
-  # Redis - Shared cache for all services
-  - type: redis
+  # Redis - Shared cache for services
+  - type: pserv
     name: tulifo-redis
-    plan: starter
     ipAllowList: []
+    plan: starter

@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tulifo Gig Backend — Architecture & System Design</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;line-height:1.7}
+.container{max-width:1200px;margin:0 auto;padding:20px 32px 60px}
+h1{font-size:2.4rem;text-align:center;padding:48px 0 8px;background:linear-gradient(135deg,#6366f1,#a855f7,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#94a3b8;font-size:1.1rem;margin-bottom:40px}
+h2{font-size:1.7rem;color:#a78bfa;margin:48px 0 16px;padding-bottom:8px;border-bottom:2px solid #1e293b}
+h3{font-size:1.2rem;color:#38bdf8;margin:28px 0 12px}
+p,li{color:#cbd5e1;font-size:.95rem}
+.section{background:#1e293b;border-radius:16px;padding:32px;margin:24px 0;border:1px solid #334155}
+.diagram-box{background:#0f172a;border-radius:12px;padding:24px;margin:16px 0;border:1px solid #334155;overflow-x:auto}
+.diagram-box .mermaid{display:flex;justify-content:center}
+table{width:100%;border-collapse:collapse;margin:16px 0;font-size:.9rem}
+th{background:#334155;color:#a78bfa;padding:10px 14px;text-align:left;font-weight:600}
+td{padding:10px 14px;border-bottom:1px solid #1e293b;color:#cbd5e1}
+tr:hover td{background:#1e293b}
+code{background:#334155;color:#f472b6;padding:2px 6px;border-radius:4px;font-size:.85rem}
+pre{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:16px;overflow-x:auto;font-size:.85rem;color:#94a3b8;margin:12px 0}
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:600;margin:2px}
+.badge-ts{background:#2563eb33;color:#60a5fa}.badge-go{background:#00add833;color:#5ce1e6}.badge-py{background:#f59e0b33;color:#fbbf24}
+.toc{background:#1e293b;border-radius:12px;padding:24px;margin:20px 0}
+.toc a{color:#6366f1;text-decoration:none;display:block;padding:4px 0}.toc a:hover{color:#a78bfa}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:768px){.grid-2{grid-template-columns:1fr}h1{font-size:1.8rem}.container{padding:12px 16px}}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>🚀 Tulifo Gig Backend</h1>
+<p class="subtitle">Polyglot Microservices Architecture — 15 Services • 3 Languages • Full Documentation</p>
+
+<div class="toc">
+<h3 style="margin-top:0">📑 Table of Contents</h3>
+<a href="#arch">1. Backend Architecture Diagram</a>
+<a href="#flow">2. Backend Flow Diagrams</a>
+<a href="#sys">3. System Design</a>
+</div>
+
+<!-- ========== SECTION 1 ========== -->
+<h2 id="arch">1. Backend Architecture Diagram</h2>
+
+<div class="section">
+<h3>1.1 High-Level Architecture</h3>
+<div class="diagram-box"><pre class="mermaid">
+graph TB
+    subgraph Client["🖥️ Client Layer"]
+        WEB["🌐 Web App\n(Next.js/React)"]
+        MOB["📱 Mobile App"]
+    end
+    subgraph Gateway["🚪 API Gateway Layer"]
+        VERCEL["☁️ Vercel Gateway\nProduction"]
+        KONG["🦍 Kong\nLocal Dev :8000"]
+    end
+    subgraph NodeServices["Node.js Services (Express+TS)"]
+        AUTH["🔐 Auth :3001"]
+        USER["👤 User :3002"]
+        PROJ["📋 Project :3003"]
+        PAY["💳 Payment :3004"]
+        MSG["💬 Message :3005"]
+        NOTIF["🔔 Notification :3006"]
+        SESS["🕐 Session :3009"]
+        WRK["⚙️ Worker :3010"]
+        CLI["🏢 Client :3011"]
+        ESC["🏦 Escrow :3012"]
+        DISP["⚖️ Dispute :3013"]
+        REV["⭐ Review :3014"]
+        SRCH["🔍 Search :3015"]
+    end
+    subgraph GoService["Go Service"]
+        BOOK["📅 Booking :3007\nGo + Gin"]
+    end
+    subgraph PyService["Python Service"]
+        MATCH["🤖 Matching :3008\nFastAPI + AI"]
+    end
+    subgraph Data["💾 Data Layer"]
+        PG["🐘 PostgreSQL\n(Supabase)"]
+        MDB["🍃 MongoDB 7"]
+        RD["🔴 Redis 7"]
+        ELS["🔎 Elasticsearch"]
+        RMQ["🐇 RabbitMQ"]
+    end
+    subgraph Monitor["📊 Monitoring"]
+        PROM["Prometheus :9090"]
+        GRAF["Grafana :3030"]
+        LOGS["Logstash+Kibana"]
+    end
+    WEB --> VERCEL
+    MOB --> VERCEL
+    WEB --> KONG
+    VERCEL --> AUTH & USER & PROJ & PAY & MSG & NOTIF & BOOK & MATCH & SESS & WRK & CLI & ESC & DISP & REV & SRCH
+    AUTH & USER & PROJ & PAY & ESC & DISP & REV --> PG
+    MSG & NOTIF & SESS --> MDB
+    AUTH & USER & BOOK & ESC & DISP & REV --> RD
+    WRK & SRCH --> ELS
+    AUTH & PAY & BOOK -.->|Events| RMQ
+    RMQ -.->|Consumes| NOTIF & WRK
+    PROM --> GRAF
+</pre></div>
+</div>
+
+<div class="section">
+<h3>1.2 Service Port Map</h3>
+<table>
+<tr><th>Service</th><th>Port</th><th>Language</th><th>Framework</th><th>Database(s)</th></tr>
+<tr><td>Auth Service</td><td><code>3001</code></td><td><span class="badge badge-ts">TypeScript</span></td><td>Express.js</td><td>PostgreSQL, Redis</td></tr>
+<tr><td>User Service</td><td><code>3002</code></td><td><span class="badge badge-ts">TypeScript</span></td><td>Express.js</td><td>PostgreSQL, Redis</td></tr>
+<tr><td>Project Service</td><td><code>3003</code></td><td><span class="badge badge-ts">TypeScript</span></td><td>Express.js</td><td>PostgreSQL, Redis</td></tr>
+<tr><td>Payment Service</td><td><code>3004</code></td><td><span class="badge badge-ts">TypeScript</span></td><td>Express.js</td><td>PostgreSQL</td></tr>
+<tr><td>Message Service</td><td><code>3005</code></td><td><span class="badge badge-ts">TypeScript</span></td><td>Express.js</td><td>MongoDB</td></tr>
+<tr><td>Notification Service</td><td><code>3006</code></td><td><span class="badge badge-ts">TypeScript</span></td><td>Express.js</td><td>MongoDB</td></tr>
+<tr><td>Booking Service</td><td><code>3007</code></td><td><span class="badge badge-go">Go</span></td><td>Gin</td><td>PostgreSQL, Redis</td></tr>
+<tr><td>Matching Service</td><td><code>3008</code></td><td><span class="badge badge-py">Python</span></td><td>FastAPI</td><td>PostgreSQL, MongoDB</td></tr>
+<tr><td>Session Service</td><td><code>3009</code></td><td><span class="badge badge-ts">TypeScript</span></td><td>Express.js</td><td>MongoDB, Redis</td></tr>
+<tr><td>Worker Service</td><td><code>3010</code></td><td><span class="badge badge-ts">TypeScript</span></td><td>Express.js</td><td>MongoDB, Elasticsearch</td></tr>
+<tr><td>Client Service</td><td><code>3011</code></td><td><span class="badge badge-ts">TypeScript</span></td><td>Express.js</td><td>MongoDB, PostgreSQL</td></tr>
+<tr><td>Escrow Service</td><td><code>3012</code></td><td><span class="badge badge-ts">TypeScript</span></td><td>Express.js</td><td>PostgreSQL, Redis</td></tr>
+<tr><td>Dispute Service</td><td><code>3013</code></td><td><span class="badge badge-ts">TypeScript</span></td><td>Express.js</td><td>PostgreSQL, Redis</td></tr>
+<tr><td>Review Service</td><td><code>3014</code></td><td><span class="badge badge-ts">TypeScript</span></td><td>Express.js</td><td>PostgreSQL, Redis</td></tr>
+<tr><td>Search Service</td><td><code>3015</code></td><td><span class="badge badge-ts">TypeScript</span></td><td>Express.js</td><td>Elasticsearch</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h3>1.3 Infrastructure Port Map</h3>
+<table>
+<tr><th>Component</th><th>Port(s)</th><th>Purpose</th></tr>
+<tr><td>Kong Gateway</td><td><code>8000/8443</code></td><td>API Proxy (HTTP/HTTPS)</td></tr>
+<tr><td>Kong Admin</td><td><code>8001/8444</code></td><td>Kong Admin API</td></tr>
+<tr><td>Konga</td><td><code>1337</code></td><td>Kong Admin Dashboard</td></tr>
+<tr><td>Redis</td><td><code>6379</code></td><td>Cache + Sessions</td></tr>
+<tr><td>RabbitMQ</td><td><code>5672/15672</code></td><td>Message Broker + Dashboard</td></tr>
+<tr><td>MongoDB</td><td><code>27017</code></td><td>Document Store</td></tr>
+<tr><td>Elasticsearch</td><td><code>9200/9300</code></td><td>Search Engine</td></tr>
+<tr><td>Prometheus</td><td><code>9090</code></td><td>Metrics Collection</td></tr>
+<tr><td>Grafana</td><td><code>3030</code></td><td>Monitoring Dashboards</td></tr>
+<tr><td>Logstash</td><td><code>5001/9600</code></td><td>Log Aggregation</td></tr>
+<tr><td>Kibana</td><td><code>5601</code></td><td>Log Visualization</td></tr>
+<tr><td>MailHog</td><td><code>1025/8025</code></td><td>Email Testing (SMTP/UI)</td></tr>
+</table>
+</div>
+
+<!-- ========== SECTION 2 ========== -->
+<h2 id="flow">2. Backend Flow Diagrams</h2>
+
+<div class="section">
+<h3>2.1 API Request Lifecycle</h3>
+<div class="diagram-box"><pre class="mermaid">
+sequenceDiagram
+    participant C as Client
+    participant GW as API Gateway
+    participant SVC as Service
+    participant MW as Middleware
+    participant DB as Database
+    participant CACHE as Redis
+
+    C->>GW: HTTP Request (POST /api/auth/login)
+    GW->>GW: Route match → Auth Service
+    GW->>SVC: Proxy request
+    SVC->>MW: helmet() → cors() → json()
+    alt Protected Route
+        MW->>MW: authenticate() → verify JWT
+        MW->>MW: authorize() → check role
+    end
+    MW->>SVC: Route handler
+    SVC->>SVC: Zod schema validation
+    alt Cache Hit
+        SVC->>CACHE: Check Redis
+        CACHE-->>SVC: Cached data
+    else Cache Miss
+        SVC->>DB: Query (pg.Pool / MongoDB)
+        DB-->>SVC: Data
+        SVC->>CACHE: Update cache
+    end
+    SVC-->>GW: {success: true, data: {...}}
+    GW-->>C: JSON Response
+</pre></div>
+</div>
+
+<div class="section">
+<h3>2.2 Authentication & Authorization Flow</h3>
+<div class="diagram-box"><pre class="mermaid">
+sequenceDiagram
+    participant C as Client
+    participant AUTH as Auth Service :3001
+    participant PG as PostgreSQL
+
+    Note over C,PG: Registration
+    C->>AUTH: POST /api/auth/register
+    AUTH->>AUTH: Zod validation
+    AUTH->>PG: Check existing user
+    AUTH->>AUTH: bcrypt.hash(password, 12)
+    AUTH->>PG: INSERT user + profile
+    AUTH->>AUTH: Generate token pair (access:15m, refresh:7d)
+    AUTH-->>C: 201 {user, accessToken, refreshToken}
+
+    Note over C,PG: Login
+    C->>AUTH: POST /api/auth/login
+    AUTH->>PG: SELECT user by email
+    AUTH->>AUTH: bcrypt.compare()
+    AUTH->>AUTH: Generate token pair
+    AUTH-->>C: 200 {user, tokens}
+
+    Note over C,PG: Token Refresh
+    C->>AUTH: POST /api/auth/refresh
+    AUTH->>AUTH: jwt.verify(refreshToken)
+    AUTH->>PG: Verify user active
+    AUTH-->>C: 200 {new tokens}
+
+    Note over C,PG: Protected Access
+    C->>AUTH: GET /api/auth/me [Bearer token]
+    AUTH->>AUTH: verify JWT → req.user
+    AUTH->>PG: SELECT user
+    AUTH-->>C: 200 {profile}
+</pre></div>
+</div>
+
+<div class="section">
+<h3>2.3 Gig Lifecycle Flow</h3>
+<div class="diagram-box"><pre class="mermaid">
+sequenceDiagram
+    participant CL as Client
+    participant PROJ as Project :3003
+    participant MATCH as Matching :3008
+    participant WK as Worker
+    participant BOOK as Booking :3007
+    participant ESC as Escrow :3012
+    participant PAY as Payment :3004
+    participant DISP as Dispute :3013
+    participant REV as Review :3014
+    participant MQ as RabbitMQ
+    participant NOTIF as Notification :3006
+
+    Note over CL,NOTIF: ① Create Project
+    CL->>PROJ: POST /api/projects
+    PROJ->>MQ: project.created
+    MQ->>NOTIF: Notify workers
+
+    Note over CL,NOTIF: ② AI Matching
+    CL->>MATCH: GET /api/matching/match
+    MATCH-->>CL: Ranked worker list
+
+    Note over CL,NOTIF: ③ Bidding
+    WK->>PROJ: POST /api/projects/:id/bids
+    PROJ->>MQ: bid.submitted
+    MQ->>NOTIF: Alert client
+
+    Note over CL,NOTIF: ④ Book & Pay
+    CL->>BOOK: POST /api/bookings
+    BOOK->>ESC: Create escrow hold
+    ESC->>PAY: Create Stripe intent (10% fee)
+    PAY-->>CL: clientSecret
+
+    Note over CL,NOTIF: ⑤ Deliver
+    WK->>PROJ: status → delivered
+    PROJ->>MQ: project.delivered
+
+    Note over CL,NOTIF: ⑥ Complete / Dispute
+    alt Approve
+        CL->>ESC: Release funds
+        ESC->>PAY: Transfer to worker
+    else Dispute
+        CL->>DISP: POST /api/disputes
+        DISP->>ESC: Hold funds
+    end
+
+    Note over CL,NOTIF: ⑦ Review
+    CL->>REV: POST /api/reviews
+    WK->>REV: POST /api/reviews
+</pre></div>
+</div>
+
+<div class="section">
+<h3>2.4 Real-Time Messaging Flow</h3>
+<div class="diagram-box"><pre class="mermaid">
+sequenceDiagram
+    participant U1 as User A
+    participant WS as Socket.IO :3005
+    participant MDB as MongoDB
+    participant U2 as User B
+
+    U1->>WS: WebSocket connect (JWT auth)
+    WS->>WS: Verify token → join user:A
+    U2->>WS: WebSocket connect
+    WS->>WS: join user:B
+
+    U1->>WS: join_conversation(convId)
+    U1->>WS: POST /api/messages
+    WS->>MDB: Insert message doc
+    WS->>WS: emit to conversation:convId
+    WS-->>U2: new_message event 💬
+</pre></div>
+</div>
+
+<div class="section">
+<h3>2.5 Notification Delivery</h3>
+<div class="diagram-box"><pre class="mermaid">
+flowchart LR
+    A["Event on RabbitMQ"] --> B["Notification Service\nConsumes"]
+    B --> C["📧 Email\n(Nodemailer)"]
+    B --> D["🔔 Push\n(web-push VAPID)"]
+    B --> E["💾 In-App\n(MongoDB)"]
+</pre></div>
+</div>
+
+<!-- ========== SECTION 3 ========== -->
+<h2 id="sys">3. System Design</h2>
+
+<div class="section">
+<h3>3.1 Repository Structure</h3>
+<pre>
+tulifo-gig-backend/                  # pnpm Monorepo Root
+├── api/                             # Vercel Serverless API Gateway
+│   ├── gateway.ts                   #   Path-based reverse proxy
+│   ├── index.ts                     #   Landing page
+│   └── status.ts                    #   Health dashboard
+├── apps/                            # 15 Microservices
+│   ├── auth-service/       :3001    #   Node.js/Express
+│   ├── user-service/       :3002    #   Node.js/Express
+│   ├── project-service/    :3003    #   Node.js/Express
+│   ├── payment-service/    :3004    #   Node.js/Express + Stripe
+│   ├── message-service/    :3005    #   Node.js/Express + Socket.IO
+│   ├── notification-service/ :3006  #   Node.js/Express + Nodemailer
+│   ├── booking-service/    :3007    #   Go/Gin
+│   ├── matching-service/   :3008    #   Python/FastAPI + AI
+│   ├── session-service/    :3009    #   Node.js/Express
+│   ├── worker-service/     :3010    #   Node.js/Express
+│   ├── client-service/     :3011    #   Node.js/Express
+│   ├── escrow-service/     :3012    #   Node.js/Express
+│   ├── dispute-service/    :3013    #   Node.js/Express
+│   ├── review-service/     :3014    #   Node.js/Express
+│   └── search-service/     :3015    #   Node.js/Express + ES
+├── packages/
+│   ├── shared/         # JWT, middleware, Redis, RabbitMQ, errors
+│   └── types/          # Shared TypeScript types
+├── infrastructure/     # Kong, monitoring, DB configs
+├── docker-compose.yml  # Full stack (595 lines)
+├── vercel.json         # Production deploy
+├── render.yaml         # Render deploy
+└── railway.json        # Railway deploy
+</pre>
+</div>
+
+<div class="section">
+<h3>3.2 Technology Stack</h3>
+<table>
+<tr><th>Layer</th><th>Technology</th><th>Purpose</th></tr>
+<tr><td>Runtime</td><td>Node.js (TS), Go, Python</td><td>Polyglot microservices</td></tr>
+<tr><td>Frameworks</td><td>Express.js, Gin, FastAPI</td><td>HTTP servers</td></tr>
+<tr><td>Primary DB</td><td>Supabase PostgreSQL</td><td>Relational data</td></tr>
+<tr><td>Document DB</td><td>MongoDB 7</td><td>Messages, notifications</td></tr>
+<tr><td>Cache</td><td>Redis 7</td><td>Sessions, rate limiting</td></tr>
+<tr><td>Search</td><td>Elasticsearch 8.11</td><td>Full-text search</td></tr>
+<tr><td>Message Queue</td><td>RabbitMQ 3</td><td>Async events</td></tr>
+<tr><td>API Gateway</td><td>Kong + Vercel</td><td>Routing, rate limiting</td></tr>
+<tr><td>Payments</td><td>Stripe API</td><td>Payment intents, webhooks</td></tr>
+<tr><td>Auth</td><td>JWT (HS256) + bcrypt</td><td>Token auth</td></tr>
+<tr><td>Validation</td><td>Zod / Pydantic</td><td>Schema validation</td></tr>
+<tr><td>ORM</td><td>Drizzle ORM + pg.Pool</td><td>DB operations</td></tr>
+<tr><td>Real-time</td><td>Socket.IO</td><td>WebSocket messaging</td></tr>
+<tr><td>Email</td><td>Nodemailer</td><td>Transactional email</td></tr>
+<tr><td>Push</td><td>web-push (VAPID)</td><td>Browser notifications</td></tr>
+<tr><td>Monitoring</td><td>Prometheus + Grafana</td><td>Metrics + dashboards</td></tr>
+<tr><td>Logging</td><td>ELK Stack</td><td>Centralized logging</td></tr>
+<tr><td>Containers</td><td>Docker + Compose</td><td>Orchestration</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h3>3.3 Node.js Service Internal Pattern</h3>
+<pre>
+service-name/src/
+├── index.ts           # Express bootstrap, DB connect, middleware, routes
+├── routes/
+│   └── *.routes.ts    # Route handlers + Zod validation
+├── lib/
+│   ├── jwt.ts         # Token generation/verification
+│   ├── middleware.ts   # authenticate(), authorize(), errorHandler()
+│   ├── errors.ts      # ApiError, ValidationError, etc.
+│   ├── validation.ts  # Zod validate() wrapper
+│   └── logger.ts      # Structured logger
+└── db/
+    ├── drizzle.ts     # Drizzle ORM connection
+    ├── schema.ts      # Table definitions + Zod schemas
+    └── migrations/    # SQL migrations
+</pre>
+<p style="margin-top:12px"><strong>Middleware Pipeline:</strong></p>
+<pre>Request → helmet() → cors() → json() → [authenticate()] → [authorize()] → Handler → errorHandler()</pre>
+</div>
+
+<div class="section">
+<h3>3.4 Database Schema (PostgreSQL)</h3>
+<div class="diagram-box"><pre class="mermaid">
+erDiagram
+    USERS {
+        serial id PK
+        varchar email UK
+        varchar password_hash
+        varchar first_name
+        varchar last_name
+        varchar role
+        boolean is_active
+        timestamp created_at
+    }
+    USER_PROFILES {
+        serial id PK
+        int user_id FK
+        text bio
+        json skills
+        varchar location
+    }
+    PROJECTS {
+        uuid id PK
+        int client_id FK
+        varchar title
+        decimal budget
+        json required_skills
+        varchar status
+    }
+    BIDS {
+        uuid id PK
+        uuid project_id FK
+        int worker_id FK
+        decimal amount
+        text proposal
+    }
+    PAYMENTS {
+        uuid id PK
+        uuid payer_id FK
+        uuid payee_id FK
+        decimal amount
+        decimal fee
+        varchar stripe_intent_id
+        varchar status
+    }
+    ESCROW {
+        uuid id PK
+        uuid booking_id FK
+        decimal amount
+        varchar status
+    }
+    DISPUTES {
+        uuid id PK
+        uuid project_id FK
+        text reason
+        varchar status
+    }
+    REVIEWS {
+        uuid id PK
+        uuid project_id FK
+        int rating
+        text comment
+    }
+    USERS ||--o{ USER_PROFILES : has
+    USERS ||--o{ PROJECTS : creates
+    USERS ||--o{ BIDS : submits
+    PROJECTS ||--o{ BIDS : receives
+    PROJECTS ||--o{ PAYMENTS : generates
+    PROJECTS ||--o{ DISPUTES : may_have
+    PROJECTS ||--o{ REVIEWS : receives
+</pre></div>
+</div>
+
+<div class="section">
+<h3>3.5 Inter-Service Communication</h3>
+<div class="diagram-box"><pre class="mermaid">
+graph LR
+    subgraph sync["Synchronous (HTTP)"]
+        A["Dispute"] -->|HTTP| B["Escrow"]
+        C["Booking"] -->|HTTP| D["Payment"]
+    end
+    subgraph async["Asynchronous (RabbitMQ)"]
+        E["Auth"] -->|user.registered| MQ{RabbitMQ}
+        F["Project"] -->|project.created| MQ
+        G["Payment"] -->|payment.completed| MQ
+        H["Booking"] -->|booking.created| MQ
+        MQ -->|Consume| I["Notification"]
+        MQ -->|Consume| J["Worker"]
+        MQ -->|Consume| K["Search"]
+    end
+</pre></div>
+<h3 style="margin-top:20px">Event Table</h3>
+<table>
+<tr><th>Event</th><th>Publisher</th><th>Consumers</th></tr>
+<tr><td><code>user.registered</code></td><td>Auth</td><td>Notification (welcome email)</td></tr>
+<tr><td><code>project.created</code></td><td>Project</td><td>Notification, Search, Matching</td></tr>
+<tr><td><code>bid.submitted</code></td><td>Project</td><td>Notification (alert client)</td></tr>
+<tr><td><code>booking.created</code></td><td>Booking</td><td>Escrow, Notification</td></tr>
+<tr><td><code>payment.completed</code></td><td>Payment</td><td>Notification, Escrow (release)</td></tr>
+<tr><td><code>payment.failed</code></td><td>Payment</td><td>Notification (alert payer)</td></tr>
+<tr><td><code>review.created</code></td><td>Review</td><td>Search (update ratings)</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h3>3.6 Security Architecture</h3>
+<div class="diagram-box"><pre class="mermaid">
+flowchart TD
+    A["🌐 Request"] --> B["🛡️ helmet()\nSecurity Headers"]
+    B --> C["🌍 cors()\nOrigin Whitelist"]
+    C --> D["📦 express.json()"]
+    D --> E{"Protected?"}
+    E -->|No| F["Public Endpoint"]
+    E -->|Yes| G["Extract Bearer Token"]
+    G --> H["jwt.verify(HS256)"]
+    H -->|Invalid| I["❌ 401"]
+    H -->|Valid| J["req.user = payload"]
+    J --> K{"Role Check?"}
+    K -->|No| L["Route Handler"]
+    K -->|Yes| M["authorize()"]
+    M -->|Denied| N["❌ 403"]
+    M -->|OK| L
+    L --> O["✅ Response"]
+</pre></div>
+<p><strong>Token Strategy:</strong> Access token (15min, HS256) + Refresh token (7 days, separate secret) • Passwords: bcrypt 12 rounds</p>
+</div>
+
+<div class="section">
+<h3>3.7 Payment System (Stripe)</h3>
+<div class="diagram-box"><pre class="mermaid">
+flowchart TD
+    A["POST /api/payments/create-intent"] --> B["Zod Validate"]
+    B --> C["Calculate 10% platform fee"]
+    C --> D["stripe.paymentIntents.create()"]
+    D --> E["INSERT payment record"]
+    E --> F["Return clientSecret"]
+    F --> G["Frontend: Stripe Elements"]
+    G --> H{"Webhook Event"}
+    H -->|succeeded| I["status = completed ✅"]
+    H -->|failed| J["status = failed ❌"]
+    I --> K["Release escrow → Pay worker"]
+</pre></div>
+</div>
+
+<div class="section">
+<h3>3.8 Deployment Architecture</h3>
+<div class="diagram-box"><pre class="mermaid">
+graph TB
+    subgraph prod["☁️ Production"]
+        V["Vercel\nAPI Gateway"]
+        R["Render / Railway\nService Containers"]
+        S["Supabase\nPostgreSQL"]
+        MA["MongoDB Atlas"]
+        RC["Redis Cloud"]
+    end
+    subgraph dev["🐳 Local Development"]
+        DC["Docker Compose\n15 services + infra"]
+        KONG_L["Kong Gateway"]
+        MH["MailHog\nEmail testing"]
+        MON["Prometheus+Grafana\nLogstash+Kibana"]
+    end
+    V --> R --> S & MA & RC
+</pre></div>
+</div>
+
+<div class="section">
+<h3>3.9 Scalability & Resilience</h3>
+<table>
+<tr><th>Pattern</th><th>Implementation</th></tr>
+<tr><td>Service Isolation</td><td>Each service has its own Dockerfile, port, and DB connection</td></tr>
+<tr><td>Health Checks</td><td>Every service exposes <code>GET /health</code> for liveness probes</td></tr>
+<tr><td>Event-Driven Async</td><td>RabbitMQ topic exchange with durable queues</td></tr>
+<tr><td>Caching</td><td>Redis for sessions and frequently-accessed data</td></tr>
+<tr><td>Connection Pooling</td><td><code>pg.Pool</code> with SSL, ioredis with retry strategies</td></tr>
+<tr><td>Rate Limiting</td><td>Kong plugins for API-level rate limiting</td></tr>
+<tr><td>Centralized Logging</td><td>ELK stack (Elasticsearch + Logstash + Kibana)</td></tr>
+<tr><td>Metrics</td><td>Prometheus scraping + Grafana dashboards</td></tr>
+<tr><td>Input Validation</td><td>Zod (TypeScript) / Pydantic (Python)</td></tr>
+<tr><td>Error Standardization</td><td>Custom <code>ApiError</code> hierarchy with status codes</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h3>3.10 Shared Package (<code>@tulifo/shared</code>)</h3>
+<pre>
+packages/shared/src/
+├── index.ts         # Re-exports everything
+├── jwt.ts           # generateAccessToken(), verifyAccessToken(), generateTokenPair()
+├── middleware.ts     # authenticate(), authorize(), errorHandler()
+├── redis.ts         # connectRedis(), getRedis(), disconnectRedis()
+├── rabbitmq.ts      # connectRabbitMQ(), publishEvent(), consumeQueue()
+├── errors.ts        # ApiError, ValidationError, UnauthorizedError, NotFoundError, ...
+├── validation.ts    # validate(schema, data) — Zod wrapper
+└── logger.ts        # Structured logger
+</pre>
+</div>
+
+<p style="text-align:center;color:#475569;margin-top:48px;font-size:.85rem">Generated by Antigravity AI — Full source code analysis of tulifo-gig-backend • February 2026</p>
+
+</div>
+<script>mermaid.initialize({startOnLoad:true,theme:'dark',themeVariables:{primaryColor:'#6366f1',primaryTextColor:'#e2e8f0',primaryBorderColor:'#818cf8',lineColor:'#818cf8',secondaryColor:'#1e293b',tertiaryColor:'#0f172a',background:'#0f172a',mainBkg:'#1e293b',nodeBorder:'#6366f1',clusterBkg:'#1e293b33',clusterBorder:'#334155',titleColor:'#a78bfa',edgeLabelBackground:'#1e293b',fontSize:'14px'}});</script>
+</body>
+</html>

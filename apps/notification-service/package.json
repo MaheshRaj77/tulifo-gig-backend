@@ -19,7 +19,8 @@
     "pino": "^8.17.2",
     "pino-pretty": "^10.3.1",
     "web-push": "^3.6.6",
-    "zod": "^3.22.4"
+    "zod": "^3.22.4",
+    "dotenv": "^16.3.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
@@ -28,7 +29,6 @@
     "@types/node": "^20.11.0",
     "@types/nodemailer": "^6.4.14",
     "@types/web-push": "^3.6.3",
-    "dotenv": "^16.3.1",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
   }

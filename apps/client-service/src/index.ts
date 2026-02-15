@@ -2,18 +2,21 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { config } from 'dotenv';
+import path from 'path';
 import { Pool } from 'pg';
 import { MongoClient, Db } from 'mongodb';
 import clientRoutes from './routes/client.routes';
 import { logger } from './utils/logger';
+import { supabase } from './utils/supabase';
 
-config();
+config({ path: path.resolve(process.cwd(), '../../.env') });
 
 const app = express();
 const PORT = process.env.PORT || 3011;
 
 let pgPool: Pool | null;
 let mongodb: Db;
+let supabaseConnected = false;
 
 async function initializeDB() {
   try {
@@ -30,6 +33,17 @@ async function initializeDB() {
     } catch (pgError) {
       logger.warn('Supabase PostgreSQL connection failed, continuing without it', pgError instanceof Error ? pgError.message : pgError);
       pgPool = null;
+    }
+
+    // Test Supabase client connection
+    try {
+      const { data, error } = await supabase.from('profiles').select('count').limit(1);
+      if (error) throw error;
+      supabaseConnected = true;
+      logger.info('Supabase client connected successfully');
+    } catch (supabaseError) {
+      logger.warn('Supabase client connection failed, continuing without it', supabaseError instanceof Error ? supabaseError.message : supabaseError);
+      supabaseConnected = false;
     }
 
     // MongoDB connection
@@ -61,6 +75,7 @@ app.use(express.json());
 app.use((req: any, res, next) => {
   req.pgPool = pgPool;
   req.mongodb = mongodb;
+  req.supabase = supabase;
   next();
 });
 
@@ -82,6 +97,22 @@ app.get('/health', async (_req: Request, res: Response) => {
     } else {
       dbStatus = { ...dbStatus, postgresql: 'disconnected' };
       // Supabase PostgreSQL is optional
+    }
+
+    // Check Supabase client
+    if (supabaseConnected) {
+      try {
+        const { error } = await supabase.from('profiles').select('count').limit(1);
+        if (error) throw error;
+        dbStatus = { ...dbStatus, supabase: 'connected' };
+      } catch (error_) {
+        console.error('Supabase client health check error:', error_);
+        dbStatus = { ...dbStatus, supabase: 'disconnected' };
+        // Supabase client is optional, don't mark unhealthy
+      }
+    } else {
+      dbStatus = { ...dbStatus, supabase: 'disconnected' };
+      // Supabase client is optional
     }
 
     // Check MongoDB

@@ -188,4 +188,120 @@ export class ClientService {
       }
     );
   }
-}
+
+  async saveProfile(pgPool: Pool, userId: string, profileData: any) {
+    const {
+      clientType,
+      contactName,
+      businessEmail,
+      businessPhone,
+      companyName,
+      companySize,
+      industry,
+      companyDescription,
+      location,
+      country,
+      timezone,
+      budgetRange,
+      preferredContractTypes,
+    } = profileData;
+
+    // Check if profile already exists
+    const existingResult = await pgPool.query(
+      'SELECT id FROM client_profiles WHERE user_id = $1',
+      [userId]
+    );
+
+    let result;
+    if (existingResult.rows.length > 0) {
+      // Update existing profile
+      result = await pgPool.query(
+        `UPDATE client_profiles SET
+          client_type = $1,
+          contact_name = $2,
+          business_email = $3,
+          business_phone = $4,
+          company_name = $5,
+          company_size = $6,
+          industry = $7,
+          company_description = $8,
+          location = $9,
+          country = $10,
+          timezone = $11,
+          budget_range = $12,
+          preferred_contract_types = $13,
+          verification_status = $14,
+          updated_at = NOW()
+         WHERE user_id = $15
+         RETURNING *`,
+        [
+          clientType,
+          contactName || null,
+          businessEmail || null,
+          businessPhone || null,
+          companyName || null,
+          companySize || null,
+          industry || null,
+          companyDescription || null,
+          location,
+          country,
+          timezone,
+          budgetRange,
+          JSON.stringify(preferredContractTypes),
+          'pending',
+          userId,
+        ]
+      );
+    } else {
+      // Insert new profile
+      result = await pgPool.query(
+        `INSERT INTO client_profiles (
+          user_id, client_type, contact_name, business_email, business_phone,
+          company_name, company_size, industry, company_description,
+          location, country, timezone, budget_range, preferred_contract_types,
+          verification_status, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW()
+        ) RETURNING *`,
+        [
+          userId,
+          clientType,
+          contactName || null,
+          businessEmail || null,
+          businessPhone || null,
+          companyName || null,
+          companySize || null,
+          industry || null,
+          companyDescription || null,
+          location,
+          country,
+          timezone,
+          budgetRange,
+          JSON.stringify(preferredContractTypes),
+          'pending',
+        ]
+      );
+    }
+
+    const profile = result.rows[0];
+    return {
+      id: profile.id,
+      userId: profile.user_id,
+      clientType: profile.client_type,
+      contactName: profile.contact_name,
+      businessEmail: profile.business_email,
+      businessPhone: profile.business_phone,
+      companyName: profile.company_name,
+      companySize: profile.company_size,
+      industry: profile.industry,
+      companyDescription: profile.company_description,
+      location: profile.location,
+      country: profile.country,
+      timezone: profile.timezone,
+      budgetRange: profile.budget_range,
+      preferredContractTypes: profile.preferred_contract_types,
+      verificationStatus: profile.verification_status,
+      createdAt: profile.created_at,
+      updatedAt: profile.updated_at,
+    };
+  }}

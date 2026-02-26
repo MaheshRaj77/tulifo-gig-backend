@@ -178,6 +178,82 @@ Each service exposes a `/health` endpoint for health checks.
 - GET `/api/skills/search` - Search skills
 - GET `/api/skills/popular` - Get popular skills
 
+## 🎯 Dual Client Type Support
+
+The platform now supports **two distinct client personas** - Individuals and Businesses:
+
+### Individual Clients
+- Solo professionals, freelancers, solopreneurs
+- Post occasional small jobs
+- Simple profile: Name, Location, Budget, Contact Info
+- 4-step onboarding flow
+- **Endpoint**: POST `/api/auth/profile` with `clientType: "individual"`
+
+### Business Clients  
+- Companies, agencies, enterprises
+- Post regular projects with team management (future)
+- Full profile: Company Info, Location, Budget, Contact Info
+- 5-step onboarding flow with company details
+- **Endpoint**: POST `/api/auth/profile` with `clientType: "business"`
+
+### Implementation Details
+
+**Documentation**:
+- [DUAL_CLIENT_IMPLEMENTATION.md](./DUAL_CLIENT_IMPLEMENTATION.md) - Technical architecture & API details
+- [TESTING_GUIDE.md](./TESTING_GUIDE.md) - Comprehensive testing procedures
+- [IMPLEMENTATION_CHECKLIST.md](./IMPLEMENTATION_CHECKLIST.md) - Project status & timeline
+
+**Key Changes**:
+- `client_profiles` table now includes `client_type` discriminator column
+- Optional company fields for individuals
+- Enhanced validation based on client type
+- Service-to-service communication between auth and client services
+
+**Database Migration**:
+```sql
+-- Run migration
+pnpm run db:push
+-- Or apply manually from: apps/client-service/src/db/migrations/0001_add_client_type.sql
+```
+
+**API Example** - Individual Client:
+```bash
+curl -X POST http://localhost:3001/api/auth/profile \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "clientType": "individual",
+    "contactName": "John Doe",
+    "businessEmail": "john@example.com",
+    "location": "San Francisco",
+    "country": "United States",
+    "timezone": "US/Pacific",
+    "budgetRange": "$5k-$10k",
+    "preferredContractTypes": ["One-time Project", "Hourly Contract"]
+  }'
+```
+
+**API Example** - Business Client:
+```bash
+curl -X POST http://localhost:3001/api/auth/profile \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "clientType": "business",
+    "companyName": "TechCorp Inc.",
+    "companySize": "51-200",
+    "industry": "Technology",
+    "companyDescription": "Enterprise software solutions",
+    "contactName": "Jane Smith",
+    "businessEmail": "jane@techcorp.com",
+    "location": "New York",
+    "country": "United States",
+    "timezone": "US/Eastern",
+    "budgetRange": "$25k-$50k",
+    "preferredContractTypes": ["Retainer", "Fixed Price"]
+  }'
+```
+
 ## License
 
 MIT

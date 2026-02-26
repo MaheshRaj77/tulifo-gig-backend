@@ -2,12 +2,12 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { config } from 'dotenv';
-import path from 'path';
+import path from 'node:path';
 import { Pool } from 'pg';
 import { MongoClient, Db } from 'mongodb';
-import clientRoutes from './routes/client.routes';
-import { logger } from './utils/logger';
-import { supabase } from './utils/supabase';
+import clientRoutes from './routes/client.routes.js';
+import { logger } from './utils/logger.js';
+import { supabase } from './utils/supabase.js';
 
 config({ path: path.resolve(process.cwd(), '../../.env') });
 
@@ -37,7 +37,7 @@ async function initializeDB() {
 
     // Test Supabase client connection
     try {
-      const { data, error } = await supabase.from('profiles').select('count').limit(1);
+      const { error } = await supabase.from('profiles').select('count').limit(1);
       if (error) throw error;
       supabaseConnected = true;
       logger.info('Supabase client connected successfully');
@@ -79,66 +79,69 @@ app.use((req: any, res, next) => {
   next();
 });
 
-app.get('/health', async (_req: Request, res: Response) => {
-  try {
-    let dbStatus = {};
-    let isHealthy = true;
+// Helper function to check database status and reduce complexity
+async function checkDatabaseStatus(): Promise<{ status: Record<string, string>; isHealthy: boolean }> {
+  const dbStatus: Record<string, string> = {};
+  let isHealthy = true;
 
-    // Check Supabase PostgreSQL
-    if (pgPool) {
-      try {
-        await pgPool.query('SELECT 1');
-        dbStatus = { ...dbStatus, postgresql: 'connected' };
-      } catch (error_) {
-        console.error('PostgreSQL health check error:', error_);
-        dbStatus = { ...dbStatus, postgresql: 'disconnected' };
-        // Supabase PostgreSQL is optional, don't mark unhealthy
-      }
-    } else {
-      dbStatus = { ...dbStatus, postgresql: 'disconnected' };
-      // Supabase PostgreSQL is optional
+  // Check Supabase PostgreSQL
+  if (pgPool) {
+    try {
+      await pgPool.query('SELECT 1');
+      dbStatus.postgresql = 'connected';
+    } catch (error_) {
+      console.error('PostgreSQL health check error:', error_);
+      dbStatus.postgresql = 'disconnected';
     }
+  } else {
+    dbStatus.postgresql = 'disconnected';
+  }
 
-    // Check Supabase client
-    if (supabaseConnected) {
-      try {
-        const { error } = await supabase.from('profiles').select('count').limit(1);
-        if (error) throw error;
-        dbStatus = { ...dbStatus, supabase: 'connected' };
-      } catch (error_) {
-        console.error('Supabase client health check error:', error_);
-        dbStatus = { ...dbStatus, supabase: 'disconnected' };
-        // Supabase client is optional, don't mark unhealthy
-      }
-    } else {
-      dbStatus = { ...dbStatus, supabase: 'disconnected' };
-      // Supabase client is optional
+  // Check Supabase client
+  if (supabaseConnected) {
+    try {
+      const { error } = await supabase.from('profiles').select('count').limit(1);
+      if (error) throw error;
+      dbStatus.supabase = 'connected';
+    } catch (error_) {
+      console.error('Supabase client health check error:', error_);
+      dbStatus.supabase = 'disconnected';
     }
+  } else {
+    dbStatus.supabase = 'disconnected';
+  }
 
-    // Check MongoDB
-    if (mongodb) {
-      try {
-        await mongodb.admin().ping();
-        dbStatus = { ...dbStatus, mongodb: 'connected' };
-      } catch (error_) {
-        console.error('MongoDB health check error:', error_);
-        dbStatus = { ...dbStatus, mongodb: 'disconnected' };
-        isHealthy = false; // MongoDB is required
-      }
-    } else {
-      dbStatus = { ...dbStatus, mongodb: 'disconnected' };
+  // Check MongoDB
+  if (mongodb) {
+    try {
+      await mongodb.admin().ping();
+      dbStatus.mongodb = 'connected';
+    } catch (error_) {
+      console.error('MongoDB health check error:', error_);
+      dbStatus.mongodb = 'disconnected';
       isHealthy = false;
     }
-    
-    res.status(isHealthy ? 200 : 503).json({ 
+  } else {
+    dbStatus.mongodb = 'disconnected';
+    isHealthy = false;
+  }
+
+  return { status: dbStatus, isHealthy };
+}
+
+app.get('/health', async (_req: Request, res: Response) => {
+  try {
+    const { status: dbStatus, isHealthy } = await checkDatabaseStatus();
+
+    res.status(isHealthy ? 200 : 503).json({
       status: isHealthy ? 'healthy' : 'degraded',
       service: 'client-service',
       ...dbStatus
     });
   } catch (error_) {
     console.error('Health check error:', error_);
-    res.status(503).json({ 
-      status: 'unhealthy', 
+    res.status(503).json({
+      status: 'unhealthy',
       service: 'client-service',
       error: error_ instanceof Error ? error_.message : 'Unknown error'
     });

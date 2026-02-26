@@ -24,6 +24,11 @@ services:
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
       - REDIS_URL=redis://redis:6379
       - CORS_ORIGIN=${CORS_ORIGIN}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - EMAIL_FROM=${EMAIL_FROM}
     depends_on:
       redis:
         condition: service_healthy
@@ -443,6 +448,8 @@ services:
       - KONG_PG_USER=kong
       - KONG_PG_PASSWORD=kong
       - KONG_PG_DATABASE=kong
+      - KONG_PROXY_LISTEN=0.0.0.0:8000
+      - KONG_ADMIN_LISTEN=0.0.0.0:8001
       - KONG_PROXY_ACCESS_LOG=/dev/stdout
       - KONG_ADMIN_ACCESS_LOG=/dev/stdout
       - KONG_PROXY_ERROR_LOG=/dev/stderr

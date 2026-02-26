@@ -1,6 +1,6 @@
-import { Response } from 'express';
-import { ClientService } from '../services/client.service';
-import { logger } from '../utils/logger';
+import { Response, Request } from 'express';
+import { ClientService } from '../services/client.service.js';
+import { logger } from '../utils/logger.js';
 
 export class ClientController {
   private readonly clientService: ClientService;
@@ -172,4 +172,22 @@ export class ClientController {
       res.status(500).json({ error: 'Failed to remove favorite worker' });
     }
   };
-}
+
+  saveProfile = async (req: any, res: Response) => {
+    try {
+      const { id } = req.params;
+      const profileData = req.body;
+
+      const profile = await this.clientService.saveProfile(req.pgPool, id, profileData);
+      res.status(201).json({
+        success: true,
+        data: profile,
+      });
+    } catch (error) {
+      logger.error('Save profile error', error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to save profile',
+      });
+    }
+  };}

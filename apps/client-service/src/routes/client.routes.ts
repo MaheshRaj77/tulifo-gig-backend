@@ -1,11 +1,12 @@
 import { Router } from 'express';
-import { ClientController } from '../controllers/client.controller';
+import { ClientController } from '../controllers/client.controller.js';
 
 const router: any = Router();
 const controller = new ClientController();
 
 router.get('/:id', controller.getClientById);
 router.put('/:id', controller.updateClient);
+router.post('/:id/profile', controller.saveProfile);
 router.get('/:id/projects', controller.getProjects);
 router.post('/:id/projects', controller.createProject);
 router.get('/:id/bookings', controller.getBookings);

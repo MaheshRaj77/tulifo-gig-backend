@@ -47,10 +47,10 @@ async function initializeDB() {
 
 async function initializeElasticsearchIndexes() {
   const indexName = 'workers';
-  
+
   try {
     const exists = await elasticsearch.indices.exists({ index: indexName });
-    
+
     if (!exists) {
       await elasticsearch.indices.create({
         index: indexName,
@@ -113,19 +113,19 @@ app.get('/health', async (_req: Request, res: Response) => {
   try {
     // Check MongoDB
     await mongodb.admin().ping();
-    
+
     // Check Elasticsearch
     await elasticsearch.ping();
-    
-    res.status(200).json({ 
-      status: 'healthy', 
+
+    res.status(200).json({
+      status: 'healthy',
       service: 'worker-service',
       mongodb: 'connected',
       elasticsearch: 'connected'
     });
   } catch (error) {
-    res.status(503).json({ 
-      status: 'unhealthy', 
+    res.status(503).json({
+      status: 'unhealthy',
       service: 'worker-service',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
@@ -142,7 +142,10 @@ app.use((err: Error, req: Request, res: Response, next: any) => {
 });
 
 // Start server after DB initialization
-await initializeDB();
-app.listen(PORT, () => {
-  logger.info(`Worker Service running on port ${PORT}`);
+initializeDB().then(() => {
+  app.listen(PORT, () => {
+    logger.info(`Worker Service running on port ${PORT}`);
+  });
+}).catch(err => {
+  logger.error('Failed to start worker service', err);
 });

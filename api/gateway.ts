@@ -69,6 +69,7 @@ export default async function handler(
     '/api/messages': process.env.MESSAGE_SERVICE_URL || 'https://message-service.onrender.com',
     '/api/notifications': process.env.NOTIFICATION_SERVICE_URL || 'https://notification-service.onrender.com',
     '/api/bookings': process.env.BOOKING_SERVICE_URL || 'https://booking-service.onrender.com',
+    '/api/availability': process.env.BOOKING_SERVICE_URL || 'https://booking-service.onrender.com',
     '/api/matching': process.env.MATCHING_SERVICE_URL || 'https://matching-service.onrender.com',
     '/api/sessions': process.env.SESSION_SERVICE_URL || 'https://session-service.onrender.com',
     '/api/workers': process.env.WORKER_SERVICE_URL || 'https://worker-service.onrender.com',

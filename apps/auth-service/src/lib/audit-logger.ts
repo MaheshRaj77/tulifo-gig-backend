@@ -13,6 +13,7 @@ export type AuditEvent =
     | 'AUTH_PASSWORD_RESET_COMPLETED'
     | 'AUTH_ACCOUNT_LOCKED'
     | 'CLIENT_PROFILE_COMPLETED'
+    | 'WORKER_PROFILE_COMPLETED'
     | 'SUSPICIOUS_INPUT';
 
 export interface AuditLogEntry {

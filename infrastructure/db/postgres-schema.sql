@@ -25,15 +25,25 @@ CREATE TABLE IF NOT EXISTS worker_profiles (
     title VARCHAR(200),
     bio TEXT,
     skills TEXT[] DEFAULT '{}',
+    languages TEXT[] DEFAULT '{}',
     hourly_rate DECIMAL(10, 2),
     currency VARCHAR(3) DEFAULT 'USD',
     location VARCHAR(200),
+    country VARCHAR(100),
     timezone VARCHAR(50),
     availability JSONB DEFAULT '[]',
     portfolio JSONB DEFAULT '[]',
+    resume_url TEXT,
+    linkedin_url TEXT,
+    github_url TEXT,
+    leetcode_url TEXT,
+    hackerrank_url TEXT,
+    personal_website TEXT,
     rating DECIMAL(3, 2) DEFAULT 0,
     review_count INTEGER DEFAULT 0,
     completed_jobs INTEGER DEFAULT 0,
+    hours_per_week INTEGER,
+    preferred_work_types TEXT[] DEFAULT '{}',
     is_available BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -69,18 +79,46 @@ CREATE TABLE IF NOT EXISTS projects (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Bids
+-- Bids (repurposed as interest expressions — workers express interest, no bid amount required)
 CREATE TABLE IF NOT EXISTS bids (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     worker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    amount DECIMAL(10, 2) NOT NULL,
+    amount DECIMAL(10, 2),
     currency VARCHAR(3) DEFAULT 'USD',
     proposal TEXT,
     estimated_duration INTEGER,
-    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected', 'withdrawn')),
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected', 'withdrawn', 'shortlisted')),
+    ai_score DECIMAL(5, 2),
+    note TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(project_id, worker_id)
+);
+
+-- Agreements (formal work contract after meeting)
+CREATE TABLE IF NOT EXISTS agreements (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    worker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    client_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    booking_id UUID REFERENCES bookings(id) ON DELETE SET NULL,
+    title VARCHAR(200) NOT NULL,
+    scope TEXT NOT NULL,
+    deliverables JSONB DEFAULT '[]',
+    amount DECIMAL(10, 2) NOT NULL,
+    currency VARCHAR(3) DEFAULT 'USD',
+    payment_type VARCHAR(20) DEFAULT 'fixed' CHECK (payment_type IN ('fixed', 'hourly', 'milestone')),
+    duration INTEGER,
+    duration_unit VARCHAR(10) DEFAULT 'days' CHECK (duration_unit IN ('hours', 'days', 'weeks', 'months')),
+    start_date DATE,
+    end_date DATE,
+    terms TEXT,
+    status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'pending_worker', 'pending_client', 'active', 'completed', 'cancelled', 'disputed')),
+    client_signed_at TIMESTAMP WITH TIME ZONE,
+    worker_signed_at TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Bookings
@@ -172,6 +210,10 @@ CREATE INDEX idx_bookings_start_time ON bookings(start_time);
 CREATE INDEX idx_payments_payer_id ON payments(payer_id);
 CREATE INDEX idx_payments_payee_id ON payments(payee_id);
 CREATE INDEX idx_reviews_reviewee_id ON reviews(reviewee_id);
+CREATE INDEX idx_agreements_project_id ON agreements(project_id);
+CREATE INDEX idx_agreements_worker_id ON agreements(worker_id);
+CREATE INDEX idx_agreements_client_id ON agreements(client_id);
+CREATE INDEX idx_agreements_status ON agreements(status);
 
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -188,3 +230,4 @@ CREATE TRIGGER update_worker_profiles_updated_at BEFORE UPDATE ON worker_profile
 CREATE TRIGGER update_client_profiles_updated_at BEFORE UPDATE ON client_profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_projects_updated_at BEFORE UPDATE ON projects FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_bookings_updated_at BEFORE UPDATE ON bookings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_agreements_updated_at BEFORE UPDATE ON agreements FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

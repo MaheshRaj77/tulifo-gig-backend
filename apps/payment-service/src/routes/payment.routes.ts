@@ -147,4 +147,81 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
   }
 });
 
+// Get user balance
+router.get('/wallet/balance', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // In a real app this would query the `transactions` table for the user's ledger balance.
+    // Since this is a demo/mock flow, we'll calculate it based on completed payments received
+    // minus withdrawals made.
+
+    // Total received
+    const paymentsResult = await pool.query(
+      `SELECT COALESCE(SUM(net_amount), 0) as total_received 
+       FROM payments 
+       WHERE payee_id = $1 AND status = 'completed'`,
+      [req.user!.userId]
+    );
+
+    // Total withdrawn (transactions where type='debit')
+    const withdrawalsResult = await pool.query(
+      `SELECT COALESCE(SUM(amount), 0) as total_withdrawn 
+       FROM transactions 
+       WHERE payment_id IN (SELECT id FROM payments WHERE payer_id = $1) AND type = 'debit'`,
+      [req.user!.userId]
+    );
+
+    const available = Number(paymentsResult.rows[0].total_received) - Number(withdrawalsResult.rows[0].total_withdrawn);
+
+    res.json({
+      success: true,
+      data: {
+        availableBalance: available > 0 ? available : 0,
+        currency: 'USD'
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Request withdrawal
+const withdrawSchema = z.object({
+  amount: z.number().positive(),
+  method: z.enum(['bank_transfer', 'paypal']),
+  details: z.any()
+});
+
+router.post('/withdraw', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = validate(withdrawSchema, req.body);
+
+    // Here we'd verify sufficient balance, then log a transaction.
+    // To mock the debit:
+    const paymentResult = await pool.query(
+      `INSERT INTO payments (payer_id, payee_id, amount, currency, fee, net_amount, status, description)
+       VALUES ($1, $1, $2, 'USD', 0, $2, 'pending', 'Withdrawal Request') RETURNING id`,
+      [req.user!.userId, data.amount]
+    );
+
+    const paymentId = paymentResult.rows[0].id;
+
+    await pool.query(
+      `INSERT INTO transactions (payment_id, amount, type, description, balance)
+       VALUES ($1, $2, 'debit', 'Withdrawal via ' || $3, 0)`,
+      [paymentId, data.amount, data.method]
+    );
+
+    res.json({
+      success: true,
+      message: 'Withdrawal requested successfully',
+      data: {
+        amount: data.amount,
+        status: 'pending'
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;

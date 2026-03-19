@@ -1,0 +1,14 @@
+#!/usr/bin/expect -f
+
+set timeout 10
+set service_name [lindex $argv 0]
+
+spawn railway add -s $service_name
+
+expect {
+    "Enter a variable" {
+        send "\x1b"
+        exp_continue
+    }
+    eof
+}

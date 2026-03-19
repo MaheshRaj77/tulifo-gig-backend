@@ -54,6 +54,8 @@ register_service "review-service"       "review-service"       3014 "/api/review
 register_service "search-service"       "search-service"       3015 "/api/search"
 # Project bids route
 register_service "project-bids"         "project-service"      3003 "/api/bids"
+# Agreements route (same project-service)
+register_service "agreement-service"    "project-service"      3003 "/api/agreements"
 
 echo ""
 

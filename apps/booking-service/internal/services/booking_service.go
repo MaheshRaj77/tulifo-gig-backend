@@ -6,9 +6,10 @@ import (
 	"os"
 	"time"
 
+	"booking-service/internal/models"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"booking-service/internal/models"
 )
 
 type BookingService struct {
@@ -60,16 +61,27 @@ func (s *BookingService) CreateBooking(ctx context.Context, clientID string, req
 		return nil, err
 	}
 
-	return booking, nil
+	// Return the fully enriched booking with user data
+	return s.GetBookingByID(ctx, booking.ID, clientID)
 }
 
 func (s *BookingService) GetUserBookings(ctx context.Context, userID string, role string) ([]*models.Booking, error) {
-	var query string
+	query := `
+		SELECT b.id, b.worker_id, b.client_id, b.project_id, b.title, b.description,
+		       b.start_time, b.end_time, b.duration, b.hourly_rate, b.total_amount,
+		       b.currency, b.status, b.meeting_url, b.notes, b.created_at, b.updated_at,
+		       w.id, w.first_name, w.last_name, w.avatar_url,
+		       c.id, c.first_name, c.last_name, c.avatar_url
+		FROM bookings b
+		LEFT JOIN users w ON b.worker_id = w.id
+		LEFT JOIN users c ON b.client_id = c.id
+		WHERE `
 	if role == "worker" {
-		query = "SELECT * FROM bookings WHERE worker_id = $1 ORDER BY start_time DESC"
+		query += "b.worker_id = $1"
 	} else {
-		query = "SELECT * FROM bookings WHERE client_id = $1 ORDER BY start_time DESC"
+		query += "b.client_id = $1"
 	}
+	query += " ORDER BY b.start_time DESC"
 
 	rows, err := s.db.Query(ctx, query, userID)
 	if err != nil {
@@ -80,9 +92,23 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID string, rol
 	var bookings []*models.Booking
 	for rows.Next() {
 		b := &models.Booking{}
-		err := rows.Scan(&b.ID, &b.WorkerID, &b.ClientID, &b.ProjectID, &b.Title, &b.Description, &b.StartTime, &b.EndTime, &b.Duration, &b.HourlyRate, &b.TotalAmount, &b.Currency, &b.Status, &b.MeetingURL, &b.Notes, &b.CreatedAt, &b.UpdatedAt)
+		w := &models.UserInfo{}
+		c := &models.UserInfo{}
+		err := rows.Scan(
+			&b.ID, &b.WorkerID, &b.ClientID, &b.ProjectID, &b.Title, &b.Description,
+			&b.StartTime, &b.EndTime, &b.Duration, &b.HourlyRate, &b.TotalAmount,
+			&b.Currency, &b.Status, &b.MeetingURL, &b.Notes, &b.CreatedAt, &b.UpdatedAt,
+			&w.ID, &w.FirstName, &w.LastName, &w.AvatarUrl,
+			&c.ID, &c.FirstName, &c.LastName, &c.AvatarUrl,
+		)
 		if err != nil {
 			continue
+		}
+		if w.ID != "" {
+			b.Worker = w
+		}
+		if c.ID != "" {
+			b.Client = c
 		}
 		bookings = append(bookings, b)
 	}
@@ -92,13 +118,35 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID string, rol
 
 func (s *BookingService) GetBookingByID(ctx context.Context, id string, userID string) (*models.Booking, error) {
 	b := &models.Booking{}
+	w := &models.UserInfo{}
+	c := &models.UserInfo{}
 	err := s.db.QueryRow(ctx, `
-		SELECT id, worker_id, client_id, project_id, title, description, start_time, end_time, duration, hourly_rate, total_amount, currency, status, meeting_url, notes, created_at, updated_at
-		FROM bookings WHERE id = $1 AND (worker_id = $2 OR client_id = $2)
-	`, id, userID).Scan(&b.ID, &b.WorkerID, &b.ClientID, &b.ProjectID, &b.Title, &b.Description, &b.StartTime, &b.EndTime, &b.Duration, &b.HourlyRate, &b.TotalAmount, &b.Currency, &b.Status, &b.MeetingURL, &b.Notes, &b.CreatedAt, &b.UpdatedAt)
+		SELECT b.id, b.worker_id, b.client_id, b.project_id, b.title, b.description,
+		       b.start_time, b.end_time, b.duration, b.hourly_rate, b.total_amount,
+		       b.currency, b.status, b.meeting_url, b.notes, b.created_at, b.updated_at,
+		       w.id, w.first_name, w.last_name, w.avatar_url,
+		       c.id, c.first_name, c.last_name, c.avatar_url
+		FROM bookings b
+		LEFT JOIN users w ON b.worker_id = w.id
+		LEFT JOIN users c ON b.client_id = c.id
+		WHERE b.id = $1 AND (b.worker_id = $2 OR b.client_id = $2)
+	`, id, userID).Scan(
+		&b.ID, &b.WorkerID, &b.ClientID, &b.ProjectID, &b.Title, &b.Description,
+		&b.StartTime, &b.EndTime, &b.Duration, &b.HourlyRate, &b.TotalAmount,
+		&b.Currency, &b.Status, &b.MeetingURL, &b.Notes, &b.CreatedAt, &b.UpdatedAt,
+		&w.ID, &w.FirstName, &w.LastName, &w.AvatarUrl,
+		&c.ID, &c.FirstName, &c.LastName, &c.AvatarUrl,
+	)
 
 	if err != nil {
 		return nil, errors.New("booking not found")
+	}
+
+	if w.ID != "" {
+		b.Worker = w
+	}
+	if c.ID != "" {
+		b.Client = c
 	}
 
 	return b, nil

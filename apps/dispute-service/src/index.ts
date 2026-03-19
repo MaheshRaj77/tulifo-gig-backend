@@ -69,6 +69,19 @@ app.get('/api/v1/disputes/:id', async (req, res) => {
   }
 });
 
+// Get all disputes (Admin)
+app.get('/api/v1/disputes', async (req, res) => {
+  try {
+    const result = await pgPool.query(
+      `SELECT * FROM disputes ORDER BY created_at DESC`
+    );
+    res.json(result.rows);
+  } catch (error_) {
+    console.error('Fetch all disputes error:', error_);
+    res.status(500).json({ error: 'Failed to fetch disputes' });
+  }
+});
+
 // Get disputes by user
 app.get('/api/v1/disputes/user/:userId', async (req, res) => {
   try {

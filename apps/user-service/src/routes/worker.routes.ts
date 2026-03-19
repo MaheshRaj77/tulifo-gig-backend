@@ -81,7 +81,8 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       `SELECT u.id, u.first_name, u.last_name, u.avatar_url, u.email,
               w.title, w.bio, w.skills, w.hourly_rate, w.currency, w.location,
               w.timezone, w.availability, w.portfolio, w.rating, w.review_count,
-              w.completed_jobs, w.is_available, w.created_at
+              w.resume_url, w.linkedin_url, w.github_url, w.leetcode_url, w.hackerrank_url, w.personal_website,
+              w.completed_jobs, w.is_available, w.created_at, w.languages, w.country, w.hours_per_week, w.preferred_work_types
        FROM users u
        JOIN worker_profiles w ON u.id = w.user_id
        WHERE u.id = $1`,
@@ -104,17 +105,27 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
         title: row.title,
         bio: row.bio,
         skills: row.skills,
+        languages: row.languages,
         hourlyRate: row.hourly_rate,
         currency: row.currency,
         location: row.location,
         timezone: row.timezone,
         availability: row.availability,
         portfolio: row.portfolio,
+        resumeUrl: row.resume_url,
+        linkedinUrl: row.linkedin_url,
+        githubUrl: row.github_url,
+        leetcodeUrl: row.leetcode_url,
+        hackerrankUrl: row.hackerrank_url,
+        personalWebsite: row.personal_website,
         rating: row.rating,
         reviewCount: row.review_count,
         completedJobs: row.completed_jobs,
         isAvailable: row.is_available,
-        createdAt: row.created_at
+        createdAt: row.created_at,
+        country: row.country,
+        hoursPerWeek: row.hours_per_week,
+        preferredWorkTypes: row.preferred_work_types
       }
     });
   } catch (error) {
@@ -130,34 +141,105 @@ router.put('/:id', authenticate, async (req: Request, res: Response, next: NextF
       return res.status(403).json({ success: false, error: { message: 'Forbidden' } });
     }
 
-    const { title, bio, skills, hourlyRate, currency, location, timezone, availability, portfolio, isAvailable } = req.body;
+    const {
+      title, bio, skills, hourlyRate, currency, location, country, timezone,
+      availability, portfolio, isAvailable, hoursPerWeek, languages, preferredWorkTypes,
+      resumeUrl, linkedinUrl, githubUrl, leetcodeUrl, hackerrankUrl, personalWebsite
+    } = req.body;
+
+    console.log('=== WORKER PROFILE UPDATE ===');
+    console.log('Worker ID:', id);
+    console.log('Title:', title);
+    console.log('Bio:', bio);
+    console.log('Skills:', skills);
+    console.log('Languages:', languages);
+    console.log('Hourly Rate:', hourlyRate);
+    console.log('Country:', country);
+    console.log('Hours Per Week:', hoursPerWeek);
+    console.log('Resume URL:', resumeUrl);
+    console.log('LinkedIn URL:', linkedinUrl);
+    console.log('GitHub URL:', githubUrl);
+    console.log('LeetCode URL:', leetcodeUrl);
+    console.log('HackerRank URL:', hackerrankUrl);
+    console.log('Personal Website:', personalWebsite);
+    console.log('---');
+
+    const params = [
+      title || null,
+      bio || null,
+      skills || [],
+      hourlyRate || null,
+      currency || 'USD',
+      location || null,
+      timezone || 'UTC',
+      availability ? JSON.stringify({ types: availability, hours: hoursPerWeek, preferred: preferredWorkTypes }) : null,
+      portfolio ? JSON.stringify(portfolio) : null,
+      isAvailable !== undefined ? isAvailable : true,
+      languages || [],
+      resumeUrl || null,
+      linkedinUrl || null,
+      githubUrl || null,
+      leetcodeUrl || null,
+      hackerrankUrl || null,
+      personalWebsite || null,
+      country || null,
+      hoursPerWeek || null,
+      preferredWorkTypes || [],
+      id
+    ];
+
+    console.log('--- EXECUTING UPDATE ---');
+    console.log('SQL:', `UPDATE worker_profiles SET ... WHERE user_id = $21`);
+    console.log('Params:', JSON.stringify(params, null, 2));
 
     const result = await pool.query(
       `UPDATE worker_profiles SET
-        title = COALESCE($1, title),
-        bio = COALESCE($2, bio),
-        skills = COALESCE($3, skills),
-        hourly_rate = COALESCE($4, hourly_rate),
-        currency = COALESCE($5, currency),
-        location = COALESCE($6, location),
-        timezone = COALESCE($7, timezone),
-        availability = COALESCE($8, availability),
-        portfolio = COALESCE($9, portfolio),
-        is_available = COALESCE($10, is_available),
+        title = $1,
+        bio = $2,
+        skills = $3,
+        hourly_rate = $4,
+        currency = $5,
+        location = $6,
+        timezone = $7,
+        availability = $8,
+        portfolio = $9,
+        is_available = $10,
+        languages = $11,
+        resume_url = $12,
+        linkedin_url = $13,
+        github_url = $14,
+        leetcode_url = $15,
+        hackerrank_url = $16,
+        personal_website = $17,
+        country = $18,
+        hours_per_week = $19,
+        preferred_work_types = $20,
         updated_at = NOW()
-       WHERE user_id = $11
+       WHERE user_id = $21
        RETURNING *`,
-      [title, bio, skills, hourlyRate, currency, location, timezone, 
-       availability ? JSON.stringify(availability) : null,
-       portfolio ? JSON.stringify(portfolio) : null,
-       isAvailable, id]
+      params
     );
 
     if (result.rows.length === 0) {
       throw new NotFoundError('Worker profile');
     }
 
-    res.json({ success: true, data: result.rows[0] });
+    const updatedRow = result.rows[0];
+    console.log('=== UPDATE RESULT ===');
+    console.log('Database update completed successfully');
+    console.log('Updated profile:');
+    console.log('  title:', updatedRow.title);
+    console.log('  bio:', updatedRow.bio);
+    console.log('  skills:', updatedRow.skills);
+    console.log('  languages:', updatedRow.languages);
+    console.log('  resume_url:', updatedRow.resume_url);
+    console.log('  linkedin_url:', updatedRow.linkedin_url);
+    console.log('  github_url:', updatedRow.github_url);
+    console.log('  leetcode_url:', updatedRow.leetcode_url);
+    console.log('  hackerrank_url:', updatedRow.hackerrank_url);
+    console.log('  personal_website:', updatedRow.personal_website);
+
+    res.json({ success: true, data: updatedRow });
   } catch (error) {
     next(error);
   }

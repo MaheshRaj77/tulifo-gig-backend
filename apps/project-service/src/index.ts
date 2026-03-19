@@ -6,6 +6,7 @@ import { Pool } from 'pg';
 import { logger, errorHandler } from './lib';
 import projectRoutes from './routes/project.routes';
 import bidRoutes from './routes/bid.routes';
+import agreementRoutes from './routes/agreement.routes';
 
 dotenv.config();
 
@@ -31,6 +32,7 @@ app.get('/health', (req, res) => {
 
 app.use('/api/projects', projectRoutes);
 app.use('/api/bids', bidRoutes);
+app.use('/api/agreements', agreementRoutes);
 
 app.use(errorHandler);
 

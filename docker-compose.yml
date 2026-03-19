@@ -29,6 +29,8 @@ services:
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASS=${SMTP_PASS}
       - EMAIL_FROM=${EMAIL_FROM}
+      - USER_SERVICE_URL=http://user-service:3002
+      - CLIENT_SERVICE_URL=http://user-service:3002
     depends_on:
       redis:
         condition: service_healthy

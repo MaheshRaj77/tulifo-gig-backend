@@ -2,6 +2,13 @@ package models
 
 import "time"
 
+type UserInfo struct {
+	ID        string  `json:"id"`
+	FirstName string  `json:"firstName"`
+	LastName  string  `json:"lastName"`
+	AvatarUrl *string `json:"avatarUrl,omitempty"`
+}
+
 type Booking struct {
 	ID          string    `json:"id"`
 	WorkerID    string    `json:"workerId"`
@@ -20,6 +27,8 @@ type Booking struct {
 	Notes       *string   `json:"notes,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
+	Worker      *UserInfo `json:"worker,omitempty"`
+	Client      *UserInfo `json:"client,omitempty"`
 }
 
 type CreateBookingRequest struct {

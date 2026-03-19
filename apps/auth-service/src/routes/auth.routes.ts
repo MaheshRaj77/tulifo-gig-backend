@@ -779,32 +779,32 @@ router.post('/reset-password', async (req: Request, res: Response, next: NextFun
 const clientProfileSchema = z.object({
   role: z.literal('client'),
   clientType: z.enum(['individual', 'business']),
-  
+
   // Individual fields
   contactName: z.string().min(2).optional(),
   businessEmail: z.string().email().optional(),
   businessPhone: z.string().min(5).optional(),
-  
+
   // Business fields
   companyName: z.string().min(2).optional(),
   companySize: z.enum(['1-10', '11-50', '51-200', '201-500', '500+']).optional(),
   industry: z.string().min(2).optional(),
   companyDescription: z.string().min(20).max(500).optional(),
-  
+
   // Shared fields
   location: z.string().min(2),
   country: z.string().min(2),
   timezone: z.string().min(2),
   budgetRange: z.enum(['<$5k', '$5k-$10k', '$10k-$25k', '$25k-$50k', '$50k+']),
   preferredContractTypes: z.array(z.string()).min(1),
-  
+
   verificationCode: z.string().optional(),
 }).refine((data) => {
   // If business, require company info
   if (data.clientType === 'business') {
     return data.companyName && data.companyName.length > 0 &&
-           data.industry && data.industry.length > 0 &&
-           data.companyDescription && data.companyDescription.length > 0;
+      data.industry && data.industry.length > 0 &&
+      data.companyDescription && data.companyDescription.length > 0;
   }
   return true;
 }, {
@@ -812,9 +812,124 @@ const clientProfileSchema = z.object({
   path: ['companyName'],
 });
 
+const workerProfileSchema = z.object({
+  role: z.literal('worker'),
+  title: z.string().min(2),
+  bio: z.string().min(20).max(500).optional(),
+  location: z.string().min(2),
+  country: z.string().min(2),
+  timezone: z.string().min(2),
+  skills: z.array(z.string()).min(1),
+  languages: z.array(z.string()).min(1).optional(),
+  hourlyRate: z.number().min(5),
+  currency: z.enum(['USD', 'EUR', 'GBP', 'CAD', 'AUD']),
+  availability: z.enum(['Full-time', 'Part-time', 'As Needed', 'Not Available']),
+  hoursPerWeek: z.number().min(1).max(168),
+  preferredWorkTypes: z.array(z.string()).min(1),
+
+  // Cloudinary / portfolio links
+  resumeUrl: z.string().url().optional().or(z.literal('')),
+  linkedinUrl: z.string().url().optional().or(z.literal('')),
+  githubUrl: z.string().url().optional().or(z.literal('')),
+  leetcodeUrl: z.string().url().optional().or(z.literal('')),
+  hackerrankUrl: z.string().url().optional().or(z.literal('')),
+  personalWebsite: z.string().url().optional().or(z.literal('')),
+  portfolioUrls: z.array(z.string().url()).optional(),
+  portfolio: z.array(z.string().url()).optional(),
+});
+
 router.post('/profile', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.user!.userId;
+    const { role } = req.body;
+
+    if (role === 'worker') {
+      const data = validate(workerProfileSchema, req.body);
+
+      // Update worker_profiles directly since we share the same PostgreSQL
+      const params = [
+        data.title || null,
+        data.bio || null,
+        data.skills || [],
+        data.hourlyRate || null,
+        data.currency || 'USD',
+        data.location || null,
+        data.timezone || 'UTC',
+        data.availability ? JSON.stringify({ types: data.availability, hours: data.hoursPerWeek, preferred: data.preferredWorkTypes }) : null,
+        data.portfolio ? JSON.stringify(data.portfolio) : (data.portfolioUrls ? JSON.stringify(data.portfolioUrls) : null),
+        true, // is_available
+        data.languages || [],
+        data.resumeUrl || null,
+        data.linkedinUrl || null,
+        data.githubUrl || null,
+        data.leetcodeUrl || null,
+        data.hackerrankUrl || null,
+        data.personalWebsite || null,
+        data.country || null,
+        data.hoursPerWeek || null,
+        data.preferredWorkTypes || [],
+        userId
+      ];
+
+      console.log('=== AUTH-SERVICE: Direct worker profile update ===');
+      console.log('User ID:', userId);
+      console.log('Title:', data.title);
+      console.log('Resume URL:', data.resumeUrl);
+      console.log('LinkedIn URL:', data.linkedinUrl);
+      console.log('Portfolio:', data.portfolio || data.portfolioUrls);
+
+      const result = await pool.query(
+        `UPDATE worker_profiles SET
+          title = $1,
+          bio = $2,
+          skills = $3,
+          hourly_rate = $4,
+          currency = $5,
+          location = $6,
+          timezone = $7,
+          availability = $8,
+          portfolio = $9,
+          is_available = $10,
+          languages = $11,
+          resume_url = $12,
+          linkedin_url = $13,
+          github_url = $14,
+          leetcode_url = $15,
+          hackerrank_url = $16,
+          personal_website = $17,
+          country = $18,
+          hours_per_week = $19,
+          preferred_work_types = $20,
+          updated_at = NOW()
+         WHERE user_id = $21
+         RETURNING *`,
+        params
+      );
+
+      if (result.rows.length === 0) {
+        throw new Error('Worker profile not found. Make sure the account was registered properly.');
+      }
+
+      const updatedRow = result.rows[0];
+      console.log('=== Worker profile updated successfully ===');
+      console.log('  resume_url:', updatedRow.resume_url);
+      console.log('  linkedin_url:', updatedRow.linkedin_url);
+
+      audit({
+        event: 'WORKER_PROFILE_COMPLETED',
+        userId,
+        email: maskEmail(req.user!.email),
+        ip: getClientIp(req),
+        requestId: req.requestId,
+      });
+
+      return res.status(201).json({
+        success: true,
+        data: updatedRow,
+      });
+    }
+
+    // Default to handling client
     const data = validate(clientProfileSchema, req.body);
 
     // Call client-service to save profile

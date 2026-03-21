@@ -1,8 +1,33 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { pool } from '../index';
 import { authenticate, NotFoundError } from '../lib';
 
 const router: Router = Router();
+
+// ─── Validation Schema for Worker Profile Update ───────────────────
+const workerProfileUpdateSchema = z.object({
+  title: z.string().min(2).max(100).optional(),
+  bio: z.string().min(10).max(2000).optional(),
+  skills: z.array(z.string().min(1).max(50)).max(20).optional(),
+  hourlyRate: z.number().positive().max(10000).optional(),
+  currency: z.string().length(3).optional(),
+  location: z.string().min(2).max(100).optional(),
+  country: z.string().min(2).max(100).optional(),
+  timezone: z.string().min(2).max(50).optional(),
+  availability: z.string().optional(),
+  portfolio: z.array(z.string().url()).max(10).optional(),
+  isAvailable: z.boolean().optional(),
+  hoursPerWeek: z.number().int().min(1).max(168).optional(),
+  languages: z.array(z.string().min(1).max(50)).max(10).optional(),
+  preferredWorkTypes: z.array(z.string().min(1).max(50)).max(10).optional(),
+  resumeUrl: z.string().url().optional().nullable(),
+  linkedinUrl: z.string().url().optional().nullable(),
+  githubUrl: z.string().url().optional().nullable(),
+  leetcodeUrl: z.string().url().optional().nullable(),
+  hackerrankUrl: z.string().url().optional().nullable(),
+  personalWebsite: z.string().url().optional().nullable(),
+});
 
 // Search workers
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
@@ -73,12 +98,12 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// Get worker profile
+// Get worker profile (public — but do NOT expose email)
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
-      `SELECT u.id, u.first_name, u.last_name, u.avatar_url, u.email,
+      `SELECT u.id, u.first_name, u.last_name, u.avatar_url,
               w.title, w.bio, w.skills, w.hourly_rate, w.currency, w.location,
               w.timezone, w.availability, w.portfolio, w.rating, w.review_count,
               w.resume_url, w.linkedin_url, w.github_url, w.leetcode_url, w.hackerrank_url, w.personal_website,
@@ -100,7 +125,6 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
         id: row.id,
         firstName: row.first_name,
         lastName: row.last_name,
-        email: row.email,
         avatarUrl: row.avatar_url,
         title: row.title,
         bio: row.bio,
@@ -141,56 +165,32 @@ router.put('/:id', authenticate, async (req: Request, res: Response, next: NextF
       return res.status(403).json({ success: false, error: { message: 'Forbidden' } });
     }
 
-    const {
-      title, bio, skills, hourlyRate, currency, location, country, timezone,
-      availability, portfolio, isAvailable, hoursPerWeek, languages, preferredWorkTypes,
-      resumeUrl, linkedinUrl, githubUrl, leetcodeUrl, hackerrankUrl, personalWebsite
-    } = req.body;
-
-    console.log('=== WORKER PROFILE UPDATE ===');
-    console.log('Worker ID:', id);
-    console.log('Title:', title);
-    console.log('Bio:', bio);
-    console.log('Skills:', skills);
-    console.log('Languages:', languages);
-    console.log('Hourly Rate:', hourlyRate);
-    console.log('Country:', country);
-    console.log('Hours Per Week:', hoursPerWeek);
-    console.log('Resume URL:', resumeUrl);
-    console.log('LinkedIn URL:', linkedinUrl);
-    console.log('GitHub URL:', githubUrl);
-    console.log('LeetCode URL:', leetcodeUrl);
-    console.log('HackerRank URL:', hackerrankUrl);
-    console.log('Personal Website:', personalWebsite);
-    console.log('---');
+    // Validate input with Zod schema
+    const data = workerProfileUpdateSchema.parse(req.body);
 
     const params = [
-      title || null,
-      bio || null,
-      skills || [],
-      hourlyRate || null,
-      currency || 'USD',
-      location || null,
-      timezone || 'UTC',
-      availability ? JSON.stringify({ types: availability, hours: hoursPerWeek, preferred: preferredWorkTypes }) : null,
-      portfolio ? JSON.stringify(portfolio) : null,
-      isAvailable !== undefined ? isAvailable : true,
-      languages || [],
-      resumeUrl || null,
-      linkedinUrl || null,
-      githubUrl || null,
-      leetcodeUrl || null,
-      hackerrankUrl || null,
-      personalWebsite || null,
-      country || null,
-      hoursPerWeek || null,
-      preferredWorkTypes || [],
+      data.title || null,
+      data.bio || null,
+      data.skills || [],
+      data.hourlyRate || null,
+      data.currency || 'USD',
+      data.location || null,
+      data.timezone || 'UTC',
+      data.availability ? JSON.stringify({ types: data.availability, hours: data.hoursPerWeek, preferred: data.preferredWorkTypes }) : null,
+      data.portfolio ? JSON.stringify(data.portfolio) : null,
+      data.isAvailable !== undefined ? data.isAvailable : true,
+      data.languages || [],
+      data.resumeUrl || null,
+      data.linkedinUrl || null,
+      data.githubUrl || null,
+      data.leetcodeUrl || null,
+      data.hackerrankUrl || null,
+      data.personalWebsite || null,
+      data.country || null,
+      data.hoursPerWeek || null,
+      data.preferredWorkTypes || [],
       id
     ];
-
-    console.log('--- EXECUTING UPDATE ---');
-    console.log('SQL:', `UPDATE worker_profiles SET ... WHERE user_id = $21`);
-    console.log('Params:', JSON.stringify(params, null, 2));
 
     const result = await pool.query(
       `UPDATE worker_profiles SET
@@ -224,22 +224,7 @@ router.put('/:id', authenticate, async (req: Request, res: Response, next: NextF
       throw new NotFoundError('Worker profile');
     }
 
-    const updatedRow = result.rows[0];
-    console.log('=== UPDATE RESULT ===');
-    console.log('Database update completed successfully');
-    console.log('Updated profile:');
-    console.log('  title:', updatedRow.title);
-    console.log('  bio:', updatedRow.bio);
-    console.log('  skills:', updatedRow.skills);
-    console.log('  languages:', updatedRow.languages);
-    console.log('  resume_url:', updatedRow.resume_url);
-    console.log('  linkedin_url:', updatedRow.linkedin_url);
-    console.log('  github_url:', updatedRow.github_url);
-    console.log('  leetcode_url:', updatedRow.leetcode_url);
-    console.log('  hackerrank_url:', updatedRow.hackerrank_url);
-    console.log('  personal_website:', updatedRow.personal_website);
-
-    res.json({ success: true, data: updatedRow });
+    res.json({ success: true, data: result.rows[0] });
   } catch (error) {
     next(error);
   }

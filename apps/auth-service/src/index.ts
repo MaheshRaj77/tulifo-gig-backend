@@ -1,10 +1,11 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { config } from 'dotenv';
 import path from 'path';
 import { Pool } from 'pg';
-import { logger, errorHandler, requestId, requestLogger } from './lib';
+import { logger, errorHandler, requestId, requestLogger, initRedisRateLimiter } from './lib';
 import { sanitizeInput } from './lib/sanitize.middleware';
 import authRoutes from './routes/auth.routes';
 
@@ -29,6 +30,8 @@ export const pool = new Pool({
 pool.query('SELECT NOW()')
   .then(async () => {
     logger.info('Connected to PostgreSQL');
+    // Initialize Redis for rate limiting
+    initRedisRateLimiter();
     // Ensure password_reset_tokens table exists
     await pool.query(`
       CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -83,6 +86,9 @@ app.use(cors({
 
 // Body parser with size limit (prevent payload attacks)
 app.use(express.json({ limit: '10kb' }));
+
+// Cookie parser for HttpOnly refresh token cookies
+app.use(cookieParser());
 
 // HTTPS enforcement in production
 app.use((req, res, next) => {

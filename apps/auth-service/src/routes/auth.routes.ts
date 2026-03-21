@@ -24,6 +24,29 @@ import { audit } from '../lib/audit-logger';
 
 const router: Router = Router();
 
+// ─── Cookie Config for Refresh Tokens ──────────────────────────────
+const REFRESH_COOKIE_NAME = 'refresh_token';
+const isProduction = process.env.NODE_ENV === 'production';
+
+function setRefreshTokenCookie(res: Response, token: string): void {
+  res.cookie(REFRESH_COOKIE_NAME, token, {
+    httpOnly: true,                         // Not accessible via JavaScript
+    secure: isProduction,                   // HTTPS only in production
+    sameSite: isProduction ? 'strict' : 'lax', // Strict in prod, lax in dev
+    path: '/api/auth',                      // Only sent to auth endpoints
+    maxAge: REFRESH_TOKEN_EXPIRY_MS,        // 7 days
+  });
+}
+
+function clearRefreshTokenCookie(res: Response): void {
+  res.clearCookie(REFRESH_COOKIE_NAME, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'strict' : 'lax',
+    path: '/api/auth',
+  });
+}
+
 // ─── Validation Schemas ────────────────────────────────────────────
 
 const registerSchema = z.object({
@@ -149,7 +172,7 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
     const ip = getClientIp(req);
 
     // Rate limit
-    const rl = checkRateLimit('register', ip, RATE_LIMITS.register);
+    const rl = await checkRateLimit('register', ip, RATE_LIMITS.register);
     if (!rl.allowed) {
       res.setHeader('Retry-After', Math.ceil(rl.retryAfterMs / 1000));
       return res.status(429).json({
@@ -210,6 +233,9 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
       details: { role: data.role },
     });
 
+    // Set refresh token as HttpOnly cookie
+    setRefreshTokenCookie(res, tokens.refreshToken);
+
     res.status(201).json({
       success: true,
       data: {
@@ -221,7 +247,6 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
           role: user.role,
         },
         accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
         expiresIn: tokens.expiresIn,
       },
     });
@@ -239,7 +264,7 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     const data = validate(loginSchema, req.body);
 
     // Rate limit by IP
-    const rl = checkRateLimit('login', ip, RATE_LIMITS.login);
+    const rl = await checkRateLimit('login', ip, RATE_LIMITS.login);
     if (!rl.allowed) {
       res.setHeader('Retry-After', Math.ceil(rl.retryAfterMs / 1000));
       return res.status(429).json({
@@ -333,6 +358,9 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
       userAgent: req.headers['user-agent'],
     });
 
+    // Set refresh token as HttpOnly cookie
+    setRefreshTokenCookie(res, tokens.refreshToken);
+
     res.json({
       success: true,
       data: {
@@ -344,7 +372,6 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
           role: user.role,
         },
         accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
         expiresIn: tokens.expiresIn,
       },
     });
@@ -358,7 +385,8 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
 // ═══════════════════════════════════════════════════════════════════
 router.post('/refresh', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { refreshToken } = req.body;
+    // Read refresh token from HttpOnly cookie (fallback to body for backward compat)
+    const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refreshToken;
     if (!refreshToken) {
       throw new ValidationError('Refresh token required');
     }
@@ -366,7 +394,7 @@ router.post('/refresh', async (req: Request, res: Response, next: NextFunction) 
     const ip = getClientIp(req);
 
     // Rate limit
-    const rl = checkRateLimit('refresh', ip, RATE_LIMITS.refresh);
+    const rl = await checkRateLimit('refresh', ip, RATE_LIMITS.refresh);
     if (!rl.allowed) {
       res.setHeader('Retry-After', Math.ceil(rl.retryAfterMs / 1000));
       return res.status(429).json({
@@ -441,11 +469,13 @@ router.post('/refresh', async (req: Request, res: Response, next: NextFunction) 
       requestId: req.requestId,
     });
 
+    // Set new refresh token as HttpOnly cookie
+    setRefreshTokenCookie(res, tokens.refreshToken);
+
     res.json({
       success: true,
       data: {
         accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
         expiresIn: tokens.expiresIn,
       },
     });
@@ -495,7 +525,7 @@ router.post('/change-password', authenticate, async (req: Request, res: Response
     const ip = getClientIp(req);
 
     // Rate limit
-    const rl = checkRateLimit('passwordChange', `user:${req.user!.userId}`, RATE_LIMITS.passwordChange);
+    const rl = await checkRateLimit('passwordChange', `user:${req.user!.userId}`, RATE_LIMITS.passwordChange);
     if (!rl.allowed) {
       res.setHeader('Retry-After', Math.ceil(rl.retryAfterMs / 1000));
       return res.status(429).json({
@@ -568,7 +598,8 @@ router.post('/change-password', authenticate, async (req: Request, res: Response
 // ═══════════════════════════════════════════════════════════════════
 router.post('/logout', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { refreshToken } = req.body;
+    // Read refresh token from cookie (fallback to body)
+    const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refreshToken;
     const ip = getClientIp(req);
 
     if (refreshToken) {
@@ -585,6 +616,9 @@ router.post('/logout', authenticate, async (req: Request, res: Response, next: N
       ip,
       requestId: req.requestId,
     });
+
+    // Clear refresh token cookie
+    clearRefreshTokenCookie(res);
 
     res.json({ success: true, data: { message: 'Logged out successfully' } });
   } catch (error) {
@@ -611,6 +645,9 @@ router.post('/logout-all', authenticate, async (req: Request, res: Response, nex
       requestId: req.requestId,
     });
 
+    // Clear refresh token cookie
+    clearRefreshTokenCookie(res);
+
     res.json({ success: true, data: { message: 'All sessions terminated' } });
   } catch (error) {
     next(error);
@@ -625,7 +662,7 @@ router.post('/forgot-password', async (req: Request, res: Response, next: NextFu
     const ip = getClientIp(req);
 
     // Rate limit by IP
-    const rl = checkRateLimit('passwordReset', ip, RATE_LIMITS.passwordReset);
+    const rl = await checkRateLimit('passwordReset', ip, RATE_LIMITS.passwordReset);
     if (!rl.allowed) {
       res.setHeader('Retry-After', Math.ceil(rl.retryAfterMs / 1000));
       return res.status(429).json({
@@ -698,7 +735,7 @@ router.post('/reset-password', async (req: Request, res: Response, next: NextFun
     const ip = getClientIp(req);
 
     // Rate limit by IP
-    const rl = checkRateLimit('passwordReset', ip, RATE_LIMITS.passwordReset);
+    const rl = await checkRateLimit('passwordReset', ip, RATE_LIMITS.passwordReset);
     if (!rl.allowed) {
       res.setHeader('Retry-After', Math.ceil(rl.retryAfterMs / 1000));
       return res.status(429).json({
@@ -871,12 +908,7 @@ router.post('/profile', authenticate, async (req: Request, res: Response, next: 
         userId
       ];
 
-      console.log('=== AUTH-SERVICE: Direct worker profile update ===');
-      console.log('User ID:', userId);
-      console.log('Title:', data.title);
-      console.log('Resume URL:', data.resumeUrl);
-      console.log('LinkedIn URL:', data.linkedinUrl);
-      console.log('Portfolio:', data.portfolio || data.portfolioUrls);
+
 
       const result = await pool.query(
         `UPDATE worker_profiles SET
@@ -911,9 +943,7 @@ router.post('/profile', authenticate, async (req: Request, res: Response, next: 
       }
 
       const updatedRow = result.rows[0];
-      console.log('=== Worker profile updated successfully ===');
-      console.log('  resume_url:', updatedRow.resume_url);
-      console.log('  linkedin_url:', updatedRow.linkedin_url);
+
 
       audit({
         event: 'WORKER_PROFILE_COMPLETED',

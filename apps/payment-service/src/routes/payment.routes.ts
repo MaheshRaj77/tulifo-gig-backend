@@ -192,35 +192,74 @@ const withdrawSchema = z.object({
 });
 
 router.post('/withdraw', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  const client = await pool.connect();
   try {
     const data = validate(withdrawSchema, req.body);
+    const userId = req.user!.userId;
 
-    // Here we'd verify sufficient balance, then log a transaction.
-    // To mock the debit:
-    const paymentResult = await pool.query(
+    // Use a transaction to ensure atomicity
+    await client.query('BEGIN');
+
+    // Lock the user's payment rows to prevent concurrent withdrawals
+    // Calculate available balance: total received minus total withdrawn
+    const balanceResult = await client.query(
+      `SELECT
+         COALESCE((SELECT SUM(net_amount) FROM payments WHERE payee_id = $1 AND status = 'completed'), 0)
+         -
+         COALESCE((SELECT SUM(t.amount) FROM transactions t JOIN payments p ON t.payment_id = p.id WHERE p.payer_id = $1 AND t.type = 'debit'), 0)
+         AS available_balance
+       FOR UPDATE`,
+      [userId]
+    );
+
+    const availableBalance = Number(balanceResult.rows[0].available_balance);
+
+    if (availableBalance < data.amount) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'INSUFFICIENT_BALANCE',
+          message: `Insufficient balance. Available: $${availableBalance.toFixed(2)}, Requested: $${data.amount.toFixed(2)}`,
+        },
+      });
+    }
+
+    // Create withdrawal payment record
+    const paymentResult = await client.query(
       `INSERT INTO payments (payer_id, payee_id, amount, currency, fee, net_amount, status, description)
        VALUES ($1, $1, $2, 'USD', 0, $2, 'pending', 'Withdrawal Request') RETURNING id`,
-      [req.user!.userId, data.amount]
+      [userId, data.amount]
     );
 
     const paymentId = paymentResult.rows[0].id;
 
-    await pool.query(
+    // Insert transaction record — description computed in application layer (not SQL concatenation)
+    const description = `Withdrawal via ${data.method}`;
+    const newBalance = availableBalance - data.amount;
+
+    await client.query(
       `INSERT INTO transactions (payment_id, amount, type, description, balance)
-       VALUES ($1, $2, 'debit', 'Withdrawal via ' || $3, 0)`,
-      [paymentId, data.amount, data.method]
+       VALUES ($1, $2, 'debit', $3, $4)`,
+      [paymentId, data.amount, description, newBalance]
     );
+
+    await client.query('COMMIT');
 
     res.json({
       success: true,
       message: 'Withdrawal requested successfully',
       data: {
         amount: data.amount,
+        remainingBalance: newBalance,
         status: 'pending'
       }
     });
   } catch (error) {
+    await client.query('ROLLBACK');
     next(error);
+  } finally {
+    client.release();
   }
 });
 

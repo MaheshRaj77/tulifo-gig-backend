@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { MongoClient, Db, ObjectId } from 'mongodb';
 import { logger, errorHandler, verifyAccessToken } from './lib';
+import { notifications } from '@flexwork/shared';
 import messageRoutes from './routes/message.routes';
 
 dotenv.config();
@@ -134,6 +135,11 @@ io.on('connection', (socket) => {
           io.to(`user:${participantId}`).emit('conversation_updated', {
             conversationId,
             lastMessage: fullMessage,
+          });
+
+          // Send push/in-app notification for offline users
+          notifications.newMessage(participantId, socket.data.user.firstName || 'Someone', content).catch(err => {
+            logger.error('Failed to send message notification', err);
           });
         }
       });

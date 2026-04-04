@@ -1,10 +1,19 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { ObjectId } from 'mongodb';
 import { z } from 'zod';
-import { getDb, webpush, emailTransporter } from '../index';
+import { getDb, webpush, emailTransporter, emitNotification } from '../index';
 import { authenticate, validate, logger } from '../lib';
 
 const router: Router = Router();
+
+// Internal Auth Middleware
+function requireInternalKey(req: Request, res: Response, next: NextFunction) {
+  const key = req.headers['x-internal-service-key'];
+  if (!key || key !== process.env.INTERNAL_SERVICE_KEY) {
+    return res.status(401).json({ success: false, error: { message: 'Unauthorized internal service claim' } });
+  }
+  next();
+}
 
 const subscribeSchema = z.object({
   endpoint: z.string().url(),
@@ -115,11 +124,33 @@ router.post('/subscribe', authenticate, async (req: Request, res: Response, next
 });
 
 // Send notification (internal API)
-router.post('/send', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/send', requireInternalKey, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = validate(sendNotificationSchema, req.body);
     const db = getDb();
-    const channels = data.channels || ['in_app'];
+    const requestedChannels = data.channels || ['in_app'];
+
+    // Get user's notification preferences
+    const userPrefs = await db.collection('notification_settings').findOne({ userId: data.userId });
+    
+    // Filter channels based on user preferences
+    const allowedChannels = requestedChannels.filter(channel => {
+      if (channel === 'in_app') return true; // Always allow in-app
+      if (channel === 'push') return userPrefs?.push !== false;
+      if (channel === 'email') {
+        // Check specific email preferences based on notification type
+        if (data.type.includes('message')) return userPrefs?.email_messages !== false;
+        if (data.type.includes('project') || data.type.includes('bid')) return userPrefs?.email_projects !== false;
+        return true; // Default allow for other types
+      }
+      return true;
+    });
+
+    // Check bid_alerts preference for bid-related notifications
+    if (data.type.includes('bid') && userPrefs?.bid_alerts === false) {
+      // Skip notification entirely if bid alerts disabled
+      return res.json({ success: true, skipped: true, reason: 'bid_alerts_disabled' });
+    }
 
     // Create notification record
     const notification = {
@@ -128,15 +159,18 @@ router.post('/send', async (req: Request, res: Response, next: NextFunction) => 
       title: data.title,
       body: data.body,
       data: data.data || {},
-      channels: channels,
+      channels: allowedChannels,
       isRead: false,
       createdAt: new Date()
     };
 
-    await db.collection('notifications').insertOne(notification);
+    const result = await db.collection('notifications').insertOne(notification);
+    
+    // Emit real-time notification via Socket.io
+    emitNotification(data.userId, { _id: result.insertedId, ...notification });
 
     // Send push notification
-    if (channels.includes('push')) {
+    if (allowedChannels.includes('push')) {
       const sub = await db.collection('push_subscriptions').findOne({ userId: data.userId });
       if (sub) {
         try {
@@ -152,7 +186,7 @@ router.post('/send', async (req: Request, res: Response, next: NextFunction) => 
     }
 
     // Send email notification
-    if (channels.includes('email') && data.data?.email) {
+    if (allowedChannels.includes('email') && data.data?.email) {
       try {
         await emailTransporter.sendMail({
           from: process.env.EMAIL_FROM || 'noreply@flexwork.com',
@@ -166,7 +200,81 @@ router.post('/send', async (req: Request, res: Response, next: NextFunction) => 
       }
     }
 
-    res.json({ success: true });
+    res.json({ success: true, channels: allowedChannels });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get notification preferences
+router.get('/preferences', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const db = getDb();
+    const settings = await db.collection('notification_settings').findOne({ userId: req.user!.userId });
+
+    // Return defaults if no settings exist
+    const defaultSettings = {
+      userId: req.user!.userId,
+      email_messages: true,
+      email_projects: true,
+      push: true,
+      bid_alerts: true,
+    };
+
+    res.json({
+      success: true,
+      data: settings ? {
+        email_messages: settings.email_messages ?? true,
+        email_projects: settings.email_projects ?? true,
+        push: settings.push ?? true,
+        bid_alerts: settings.bid_alerts ?? true,
+      } : defaultSettings
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Update notification preferences
+const preferencesSchema = z.object({
+  email_messages: z.boolean().optional(),
+  email_projects: z.boolean().optional(),
+  push: z.boolean().optional(),
+  bid_alerts: z.boolean().optional(),
+});
+
+router.put('/preferences', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = validate(preferencesSchema, req.body);
+    const db = getDb();
+
+    const result = await db.collection('notification_settings').updateOne(
+      { userId: req.user!.userId },
+      {
+        $set: {
+          ...data,
+          userId: req.user!.userId,
+          updatedAt: new Date()
+        },
+        $setOnInsert: {
+          createdAt: new Date()
+        }
+      },
+      { upsert: true }
+    );
+
+    // Fetch updated settings
+    const settings = await db.collection('notification_settings').findOne({ userId: req.user!.userId });
+
+    res.json({
+      success: true,
+      data: {
+        email_messages: settings?.email_messages ?? true,
+        email_projects: settings?.email_projects ?? true,
+        push: settings?.push ?? true,
+        bid_alerts: settings?.bid_alerts ?? true,
+      }
+    });
   } catch (error) {
     next(error);
   }

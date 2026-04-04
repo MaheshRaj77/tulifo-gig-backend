@@ -148,7 +148,7 @@ app.get('/health', async (_req: Request, res: Response) => {
   }
 });
 
-app.use('/api/v1/clients', clientRoutes);
+app.use('/api/clients', clientRoutes);
 
 app.use((err: Error, req: Request, res: Response, next: any) => {
   logger.error('Unhandled error', err);

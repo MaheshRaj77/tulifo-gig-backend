@@ -1,7 +1,9 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { pool } from '../index';
-import { authenticate, authorize, validate, NotFoundError, ConflictError } from '../lib';
+import { authenticate, authorize, validate, NotFoundError, ConflictError, logger } from '../lib';
+// Notification stubs (notification service is called fire-and-forget)
+const notifications = { bidPlaced: (..._: unknown[]) => Promise.resolve(), bidAccepted: (..._: unknown[]) => Promise.resolve() };
 
 const router: Router = Router();
 
@@ -38,6 +40,22 @@ router.post('/', authenticate, authorize('worker'), async (req: Request, res: Re
        RETURNING *`,
       [data.projectId, req.user!.userId, data.note || null]
     );
+
+    // Send notification to project owner
+    const projectDetails = await pool.query(
+      `SELECT p.title, p.client_id, u.email, u.first_name as worker_first_name, u.last_name as worker_last_name
+       FROM projects p
+       JOIN users u ON u.id = $2
+       WHERE p.id = $1`,
+      [data.projectId, req.user!.userId]
+    );
+    if (projectDetails.rows.length > 0) {
+      const pd = projectDetails.rows[0];
+      const workerName = `${pd.worker_first_name} ${pd.worker_last_name}`.trim();
+      notifications.bidPlaced(pd.client_id, pd.title, workerName, 0, pd.email).catch(err => {
+        logger.error('Failed to send bid notification', err);
+      });
+    }
 
     res.status(201).json({ success: true, data: result.rows[0] });
   } catch (error) {
@@ -284,6 +302,23 @@ router.post('/:id/accept', authenticate, authorize('client', 'admin'), async (re
       `UPDATE bids SET status = 'rejected' WHERE project_id = $1 AND id != $2 AND status IN ('pending', 'shortlisted')`,
       [bid.project_id, id]
     );
+
+    // Send notification to accepted worker
+    const details = await pool.query(
+      `SELECT p.title, u.first_name as client_first_name, u.last_name as client_last_name, wu.email as worker_email
+       FROM projects p
+       JOIN users u ON p.client_id = u.id
+       JOIN users wu ON wu.id = $2
+       WHERE p.id = $1`,
+      [bid.project_id, bid.worker_id]
+    );
+    if (details.rows.length > 0) {
+      const d = details.rows[0];
+      const clientName = `${d.client_first_name} ${d.client_last_name}`.trim();
+      notifications.bidAccepted(bid.worker_id, d.title, clientName, d.worker_email).catch(err => {
+        logger.error('Failed to send bid accepted notification', err);
+      });
+    }
 
     res.json({ success: true, message: 'Worker accepted' });
   } catch (error) {

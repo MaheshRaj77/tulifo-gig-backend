@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { config } from 'dotenv';
 import { Pool } from 'pg';
+import jwt from 'jsonwebtoken';
 
 config();
 
@@ -13,6 +14,22 @@ const pgPool = new Pool({ connectionString: process.env.DATABASE_URL });
 app.use(helmet());
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
 app.use(express.json());
+
+// Auth middleware
+function authenticate(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'No token provided' });
+  }
+  const token = authHeader.slice(7);
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET!);
+    (req as any).user = payload;
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
 
 app.get('/health', async (req, res) => {
   let dbStatus = 'disconnected';
@@ -26,12 +43,21 @@ app.get('/health', async (req, res) => {
 });
 
 // Create review
-app.post('/api/v1/reviews', async (req, res) => {
-  const { bookingId, reviewerId, revieweeId, rating, comment, category } = req.body;
+app.post('/api/reviews', authenticate, async (req, res) => {
+  const user = (req as any).user;
+  const { bookingId, revieweeId, rating, comment, category } = req.body;
+  const reviewerId = user.userId; // Always use authenticated user, never trust body
 
   // Validation
-  if (rating < 1 || rating > 5) {
-    return res.status(400).json({ error: 'Rating must be between 1 and 5' });
+  const ratingNum = Number(rating);
+  if (!revieweeId || typeof revieweeId !== 'string') {
+    return res.status(400).json({ error: 'revieweeId is required' });
+  }
+  if (!Number.isFinite(ratingNum) || ratingNum < 1 || ratingNum > 5) {
+    return res.status(400).json({ error: 'Rating must be a number between 1 and 5' });
+  }
+  if (reviewerId === revieweeId) {
+    return res.status(400).json({ error: 'Cannot review yourself' });
   }
 
   try {
@@ -65,7 +91,7 @@ app.post('/api/v1/reviews', async (req, res) => {
 });
 
 // Get reviews for a user
-app.get('/api/v1/reviews/user/:userId', async (req, res) => {
+app.get('/api/reviews/user/:userId', async (req, res) => {
   const { limit = 20, offset = 0 } = req.query;
 
   try {
@@ -97,7 +123,7 @@ app.get('/api/v1/reviews/user/:userId', async (req, res) => {
 });
 
 // Get review statistics
-app.get('/api/v1/reviews/stats/:userId', async (req, res) => {
+app.get('/api/reviews/stats/:userId', async (req, res) => {
   try {
     const result = await pgPool.query(
       `SELECT 
@@ -121,7 +147,7 @@ app.get('/api/v1/reviews/stats/:userId', async (req, res) => {
 });
 
 // Get user badges
-app.get('/api/v1/badges/:userId', async (req, res) => {
+app.get('/api/badges/:userId', async (req, res) => {
   try {
     const result = await pgPool.query(
       `SELECT * FROM user_badges WHERE user_id = $1 ORDER BY earned_at DESC`,

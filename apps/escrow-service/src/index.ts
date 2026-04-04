@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import { config } from 'dotenv';
 import { Pool } from 'pg';
 import cron from 'node-cron';
+import jwt from 'jsonwebtoken';
 
 config();
 
@@ -26,8 +27,24 @@ app.get('/health', async (req, res) => {
   res.json({ status: 'healthy', service: 'escrow-service', database: dbStatus });
 });
 
+// Auth Middleware
+function authenticate(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'No token provided' });
+  }
+  const token = authHeader.slice(7);
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET!);
+    (req as any).user = payload;
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
+
 // Create escrow account
-app.post('/api/v1/escrow', async (req, res) => {
+app.post('/api/escrow', authenticate, async (req, res) => {
   const { bookingId, amount, clientId, workerId } = req.body;
 
   try {
@@ -44,11 +61,22 @@ app.post('/api/v1/escrow', async (req, res) => {
 });
 
 // Release escrow funds
-app.post('/api/v1/escrow/:id/release', async (req, res) => {
+app.post('/api/escrow/:id/release', authenticate, async (req, res) => {
   const { id } = req.params;
   const { amount } = req.body;
+  const user = (req as any).user;
 
   try {
+    // Verify ownership
+    const checkResult = await pgPool.query('SELECT client_id FROM escrow_accounts WHERE id = $1', [id]);
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Escrow account not found' });
+    }
+    
+    if (user.userId !== checkResult.rows[0].client_id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Forbidden: Only the client can release funds' });
+    }
+
     const result = await pgPool.query(
       `UPDATE escrow_accounts 
        SET status = 'released', released_amount = $1, released_at = NOW()
@@ -68,7 +96,12 @@ app.post('/api/v1/escrow/:id/release', async (req, res) => {
 });
 
 // Freeze escrow (for disputes)
-app.post('/api/v1/escrow/:id/freeze', async (req, res) => {
+app.post('/api/escrow/:id/freeze', authenticate, async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== 'admin' && user.role !== 'support') {
+    return res.status(403).json({ error: 'Forbidden: Only admin/support can freeze escrow' });
+  }
+
   try {
     const result = await pgPool.query(
       `UPDATE escrow_accounts SET status = 'frozen' WHERE id = $1 RETURNING *`,
@@ -84,8 +117,16 @@ app.post('/api/v1/escrow/:id/freeze', async (req, res) => {
 // Auto-release escrow funds scheduled task (runs every 15 minutes)
 cron.schedule('*/15 * * * *', async () => {
   const now = new Date();
+  let lockAcquired = false;
 
   try {
+    const lockResult = await pgPool.query('SELECT pg_try_advisory_lock(777) AS acquired');
+    if (!lockResult.rows[0].acquired) {
+      console.log('Skipping auto-release cron (lock held by another instance)');
+      return;
+    }
+    lockAcquired = true;
+
     const result = await pgPool.query(
       `UPDATE escrow_accounts 
        SET status = 'released', released_amount = held_amount, released_at = NOW()
@@ -101,6 +142,10 @@ cron.schedule('*/15 * * * *', async () => {
     }
   } catch (error) {
     console.error('Auto-release cron job failed:', error);
+  } finally {
+    if (lockAcquired) {
+      await pgPool.query('SELECT pg_advisory_unlock(777)');
+    }
   }
 });
 

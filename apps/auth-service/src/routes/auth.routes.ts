@@ -198,21 +198,34 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
     // Hash password
     const passwordHash = await bcrypt.hash(data.password, 12);
 
-    // Create user
-    const result = await pool.query(
-      `INSERT INTO users (email, password_hash, first_name, last_name, role)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, email, first_name, last_name, role, created_at`,
-      [data.email, passwordHash, data.firstName, data.lastName, data.role]
-    );
+    const client = await pool.connect();
+    let user;
+    try {
+      await client.query('BEGIN');
 
-    const user = result.rows[0];
+      // Create user
+      const result = await client.query(
+        `INSERT INTO users (email, password_hash, first_name, last_name, role)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, email, first_name, last_name, role, created_at`,
+        [data.email, passwordHash, data.firstName, data.lastName, data.role]
+      );
 
-    // Create profile based on role
-    if (data.role === 'worker') {
-      await pool.query('INSERT INTO worker_profiles (user_id) VALUES ($1)', [user.id]);
-    } else {
-      await pool.query('INSERT INTO client_profiles (user_id) VALUES ($1)', [user.id]);
+      user = result.rows[0];
+
+      // Create profile based on role
+      if (data.role === 'worker') {
+        await client.query('INSERT INTO worker_profiles (user_id) VALUES ($1)', [user.id]);
+      } else {
+        await client.query('INSERT INTO client_profiles (user_id) VALUES ($1)', [user.id]);
+      }
+
+      await client.query('COMMIT');
+    } catch (dbError) {
+      await client.query('ROLLBACK');
+      throw dbError;
+    } finally {
+      client.release();
     }
 
     // Generate tokens with DB storage
@@ -388,7 +401,7 @@ router.post('/refresh', async (req: Request, res: Response, next: NextFunction) 
     // Read refresh token from HttpOnly cookie (fallback to body for backward compat)
     const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refreshToken;
     if (!refreshToken) {
-      throw new ValidationError('Refresh token required');
+      throw new UnauthorizedError('Refresh token required');
     }
 
     const ip = getClientIp(req);
@@ -818,15 +831,15 @@ const clientProfileSchema = z.object({
   clientType: z.enum(['individual', 'business']),
 
   // Individual fields
-  contactName: z.string().min(2).optional(),
-  businessEmail: z.string().email().optional(),
-  businessPhone: z.string().min(5).optional(),
+  contactName: z.string().min(2).optional().or(z.literal('')),
+  businessEmail: z.string().email().optional().or(z.literal('')),
+  businessPhone: z.string().min(5).optional().or(z.literal('')),
 
   // Business fields
-  companyName: z.string().min(2).optional(),
+  companyName: z.string().min(2).optional().or(z.literal('')),
   companySize: z.enum(['1-10', '11-50', '51-200', '201-500', '500+']).optional(),
-  industry: z.string().min(2).optional(),
-  companyDescription: z.string().min(20).max(500).optional(),
+  industry: z.string().min(2).optional().or(z.literal('')),
+  companyDescription: z.string().min(20).max(500).optional().or(z.literal('')),
 
   // Shared fields
   location: z.string().min(2),
@@ -962,36 +975,50 @@ router.post('/profile', authenticate, async (req: Request, res: Response, next: 
     // Default to handling client
     const data = validate(clientProfileSchema, req.body);
 
-    // Call client-service to save profile
-    const clientServiceUrl = process.env.CLIENT_SERVICE_URL || 'http://localhost:3002';
-    const response = await fetch(`${clientServiceUrl}/api/clients/${userId}/profile`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${req.headers.authorization?.split(' ')[1]}`,
-      },
-      body: JSON.stringify({
-        clientType: data.clientType,
-        contactName: data.contactName || '',
-        businessEmail: data.businessEmail || '',
-        businessPhone: data.businessPhone || '',
-        companyName: data.companyName || '',
-        companySize: data.companySize,
-        industry: data.industry || '',
-        companyDescription: data.companyDescription || '',
-        location: data.location,
-        country: data.country,
-        timezone: data.timezone,
-        budgetRange: data.budgetRange,
-        preferredContractTypes: data.preferredContractTypes,
-      }),
-    });
+    // Update client_profiles directly (same shared PostgreSQL as worker flow)
+    const clientParams = [
+      data.clientType,
+      data.contactName || null,
+      data.businessEmail || null,
+      data.businessPhone || null,
+      data.companyName || null,
+      data.companySize || null,
+      data.industry || null,
+      data.companyDescription || null,
+      data.location || null,
+      data.country || null,
+      data.timezone || 'UTC',
+      data.budgetRange || null,
+      data.preferredContractTypes ? JSON.stringify(data.preferredContractTypes) : null,
+      userId,
+    ];
 
-    if (!response.ok) {
-      throw new Error('Failed to save client profile');
+    const result = await pool.query(
+      `UPDATE client_profiles SET
+        client_type = $1,
+        contact_name = $2,
+        business_email = $3,
+        business_phone = $4,
+        company_name = $5,
+        company_size = $6,
+        industry = $7,
+        company_description = $8,
+        location = $9,
+        country = $10,
+        timezone = $11,
+        budget_range = $12,
+        preferred_contract_types = $13,
+        updated_at = NOW()
+       WHERE user_id = $14
+       RETURNING *`,
+      clientParams
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error('Client profile not found. Make sure the account was registered properly.');
     }
 
-    const profileData = await response.json() as any;
+    const updatedRow = result.rows[0];
 
     audit({
       event: 'CLIENT_PROFILE_COMPLETED',
@@ -1004,7 +1031,7 @@ router.post('/profile', authenticate, async (req: Request, res: Response, next: 
 
     res.status(201).json({
       success: true,
-      data: profileData.data || { userId, role: 'client', clientType: data.clientType },
+      data: updatedRow,
     });
   } catch (error) {
     next(error);

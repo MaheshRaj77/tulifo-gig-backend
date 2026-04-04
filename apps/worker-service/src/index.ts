@@ -3,7 +3,6 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { config } from 'dotenv';
 import { MongoClient, Db } from 'mongodb';
-import { Client as ElasticsearchClient } from '@elastic/elasticsearch';
 import workerRoutes from './routes/worker.routes';
 import { logger } from './utils/logger';
 
@@ -14,7 +13,8 @@ const PORT = process.env.PORT || 3010;
 
 // MongoDB connection
 let mongodb: Db;
-let elasticsearch: ElasticsearchClient;
+// Elasticsearch is optional - will use MongoDB text search as fallback
+let elasticsearch: any = null;
 
 async function initializeDB() {
   try {
@@ -24,28 +24,59 @@ async function initializeDB() {
     mongodb = mongoClient.db();
     logger.info('MongoDB connected successfully');
 
-    // Elasticsearch connection
-    elasticsearch = new ElasticsearchClient({
-      node: process.env.ELASTICSEARCH_URL || 'http://localhost:9200',
-      auth: {
-        username: process.env.ELASTICSEARCH_USER || 'elastic',
-        password: process.env.ELASTICSEARCH_PASSWORD || 'changeme'
+    // Create MongoDB text index for search (fallback when Elasticsearch unavailable)
+    await initializeMongoIndexes();
+
+    // Elasticsearch connection (optional)
+    if (process.env.ELASTICSEARCH_URL) {
+      try {
+        const { Client: ElasticsearchClient } = await import('@elastic/elasticsearch');
+        elasticsearch = new ElasticsearchClient({
+          node: process.env.ELASTICSEARCH_URL,
+          auth: {
+            username: process.env.ELASTICSEARCH_USER || 'elastic',
+            password: process.env.ELASTICSEARCH_PASSWORD || 'changeme'
+          }
+        });
+        await elasticsearch.ping();
+        logger.info('Elasticsearch connected successfully');
+        await initializeElasticsearchIndexes();
+      } catch (esError) {
+        logger.warn('Elasticsearch unavailable, using MongoDB for search', esError);
+        elasticsearch = null;
       }
-    });
-
-    // Test Elasticsearch connection
-    await elasticsearch.ping();
-    logger.info('Elasticsearch connected successfully');
-
-    // Create indexes if they don't exist
-    await initializeElasticsearchIndexes();
+    } else {
+      logger.info('Elasticsearch not configured, using MongoDB for search');
+    }
   } catch (error) {
     logger.error('Database initialization failed', error);
     process.exit(1);
   }
 }
 
+async function initializeMongoIndexes() {
+  try {
+    const collection = mongodb.collection('worker_profiles');
+    // Create text index for search
+    await collection.createIndex(
+      { title: 'text', tagline: 'text', 'skills.name': 'text' },
+      { name: 'worker_search_index' }
+    ).catch(() => {
+      // Index may already exist
+    });
+    // Create index for filtering
+    await collection.createIndex({ hourlyRate: 1 }).catch(() => {});
+    await collection.createIndex({ averageRating: -1 }).catch(() => {});
+    await collection.createIndex({ 'skills.name': 1 }).catch(() => {});
+    logger.info('MongoDB indexes created for worker search');
+  } catch (error) {
+    logger.warn('Failed to create MongoDB indexes', error);
+  }
+}
+
 async function initializeElasticsearchIndexes() {
+  if (!elasticsearch) return;
+  
   const indexName = 'workers';
 
   try {
@@ -114,15 +145,23 @@ app.get('/health', async (_req: Request, res: Response) => {
     // Check MongoDB
     await mongodb.admin().ping();
 
-    // Check Elasticsearch
-    await elasticsearch.ping();
-
-    res.status(200).json({
+    const healthStatus: any = {
       status: 'healthy',
       service: 'worker-service',
       mongodb: 'connected',
-      elasticsearch: 'connected'
-    });
+      elasticsearch: elasticsearch ? 'connected' : 'not configured (using MongoDB search)'
+    };
+
+    // Check Elasticsearch if available
+    if (elasticsearch) {
+      try {
+        await elasticsearch.ping();
+      } catch {
+        healthStatus.elasticsearch = 'disconnected';
+      }
+    }
+
+    res.status(200).json(healthStatus);
   } catch (error) {
     res.status(503).json({
       status: 'unhealthy',
@@ -133,7 +172,7 @@ app.get('/health', async (_req: Request, res: Response) => {
 });
 
 // Routes
-app.use('/api/v1/workers', workerRoutes);
+app.use('/api/workers', workerRoutes);
 
 // Error handling
 app.use((err: Error, req: Request, res: Response, next: any) => {

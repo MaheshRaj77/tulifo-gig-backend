@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { pool, stripe } from '../index';
 import { authenticate, validate, NotFoundError, logger } from '../lib';
+import { notifications } from '@flexwork/shared';
 
 const router: Router = Router();
 
@@ -99,6 +100,22 @@ router.post('/webhook', async (req: Request, res: Response) => {
           [paymentIntent.id]
         );
         logger.info(`Payment completed: ${paymentIntent.id}`);
+
+        // Send notification to payee
+        const paymentResult = await pool.query(
+          `SELECT p.*, pr.title as project_title FROM payments p
+           LEFT JOIN projects pr ON p.project_id = pr.id
+           WHERE p.stripe_payment_intent_id = $1`,
+          [paymentIntent.id]
+        );
+        if (paymentResult.rows.length > 0) {
+          const payment = paymentResult.rows[0];
+          notifications.paymentCompleted(
+            payment.payee_id,
+            payment.net_amount,
+            payment.project_title || 'your work'
+          ).catch(err => logger.error('Failed to send payment notification', err));
+        }
         break;
       }
       case 'payment_intent.payment_failed': {
@@ -108,6 +125,20 @@ router.post('/webhook', async (req: Request, res: Response) => {
           [paymentIntent.id]
         );
         logger.info(`Payment failed: ${paymentIntent.id}`);
+
+        // Send notification to payer about failed payment
+        const failedPayment = await pool.query(
+          `SELECT payer_id, amount FROM payments WHERE stripe_payment_intent_id = $1`,
+          [paymentIntent.id]
+        );
+        if (failedPayment.rows.length > 0) {
+          const payment = failedPayment.rows[0];
+          notifications.paymentFailed(
+            payment.payer_id,
+            payment.amount,
+            'Payment was declined'
+          ).catch(err => logger.error('Failed to send payment failed notification', err));
+        }
         break;
       }
     }
@@ -200,15 +231,16 @@ router.post('/withdraw', authenticate, async (req: Request, res: Response, next:
     // Use a transaction to ensure atomicity
     await client.query('BEGIN');
 
-    // Lock the user's payment rows to prevent concurrent withdrawals
+    // Lock the user row to serialize concurrent withdrawal attempts
+    await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
+
     // Calculate available balance: total received minus total withdrawn
     const balanceResult = await client.query(
       `SELECT
          COALESCE((SELECT SUM(net_amount) FROM payments WHERE payee_id = $1 AND status = 'completed'), 0)
          -
          COALESCE((SELECT SUM(t.amount) FROM transactions t JOIN payments p ON t.payment_id = p.id WHERE p.payer_id = $1 AND t.type = 'debit'), 0)
-         AS available_balance
-       FOR UPDATE`,
+         AS available_balance`,
       [userId]
     );
 
@@ -260,6 +292,43 @@ router.post('/withdraw', authenticate, async (req: Request, res: Response, next:
     next(error);
   } finally {
     client.release();
+  }
+});
+
+// ─── Admin: Payment stats (revenue overview) ───────────────────────
+router.get('/stats', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (req.user!.role !== 'admin') {
+      return res.status(403).json({ success: false, error: { message: 'Forbidden' } });
+    }
+
+    const result = await pool.query(`
+      SELECT
+        COALESCE(SUM(amount), 0)     AS total_volume,
+        COALESCE(SUM(fee), 0)        AS total_fees,
+        COALESCE(SUM(net_amount), 0) AS total_net,
+        COUNT(*) FILTER (WHERE status = 'completed') AS completed_count,
+        COUNT(*) FILTER (WHERE status = 'pending')   AS pending_count,
+        COUNT(*) FILTER (WHERE status = 'failed')    AS failed_count,
+        COUNT(*) AS total_count
+      FROM payments
+    `);
+
+    const row = result.rows[0];
+    res.json({
+      success: true,
+      data: {
+        totalVolume: parseFloat(row.total_volume),
+        totalFees: parseFloat(row.total_fees),
+        totalNet: parseFloat(row.total_net),
+        completedCount: parseInt(row.completed_count, 10),
+        pendingCount: parseInt(row.pending_count, 10),
+        failedCount: parseInt(row.failed_count, 10),
+        totalCount: parseInt(row.total_count, 10),
+      },
+    });
+  } catch (error) {
+    next(error);
   }
 });
 

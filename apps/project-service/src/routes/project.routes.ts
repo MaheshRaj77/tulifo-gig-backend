@@ -1,7 +1,9 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { pool } from '../index';
-import { authenticate, authorize, validate, NotFoundError } from '../lib';
+import { authenticate, authorize, validate, NotFoundError, logger } from '../lib';
+// Notification stubs (notification service is called fire-and-forget)
+const notifications = { projectDelivered: (..._: unknown[]) => Promise.resolve(), projectCompleted: (..._: unknown[]) => Promise.resolve() };
 
 const router: Router = Router();
 
@@ -184,6 +186,39 @@ router.put('/:id', authenticate, async (req: Request, res: Response, next: NextF
        duration ? JSON.stringify(duration) : null,
        visibility, status, id]
     );
+
+    // Send notifications for status changes
+    if (status && result.rows.length > 0) {
+      const updatedProject = result.rows[0];
+      
+      // Get the assigned worker if any
+      const assignedBid = await pool.query(
+        `SELECT worker_id FROM bids WHERE project_id = $1 AND status = 'accepted' LIMIT 1`,
+        [id]
+      );
+      
+      if (status === 'delivered' && assignedBid.rows.length > 0) {
+        // Notify client that worker delivered
+        const workerInfo = await pool.query(
+          `SELECT first_name, last_name FROM users WHERE id = $1`,
+          [assignedBid.rows[0].worker_id]
+        );
+        if (workerInfo.rows.length > 0) {
+          const workerName = `${workerInfo.rows[0].first_name} ${workerInfo.rows[0].last_name}`.trim();
+          notifications.projectDelivered(
+            updatedProject.client_id,
+            updatedProject.title,
+            workerName
+          ).catch(err => logger.error('Failed to send project delivered notification', err));
+        }
+      } else if (status === 'completed' && assignedBid.rows.length > 0) {
+        // Notify worker that project is completed
+        notifications.projectCompleted(
+          assignedBid.rows[0].worker_id,
+          updatedProject.title
+        ).catch(err => logger.error('Failed to send project completed notification', err));
+      }
+    }
 
     res.json({ success: true, data: result.rows[0] });
   } catch (error) {

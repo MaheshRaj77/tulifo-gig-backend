@@ -16,6 +16,7 @@
     "lint": "eslint --ext .ts apps packages",
     "test": "vitest run",
     "test:watch": "vitest",
+    "type-check": "pnpm -r exec tsc --noEmit",
     "typecheck": "pnpm -r run build",
     "db:migrate": "node infrastructure/scripts/migrate.js",
     "db:seed": "node infrastructure/scripts/seed.js"

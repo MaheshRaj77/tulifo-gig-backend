@@ -23,10 +23,13 @@ CREATE TABLE IF NOT EXISTS agreements (
     start_date DATE,
     end_date DATE,
     terms TEXT,
-    status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'pending_worker', 'pending_client', 'active', 'completed', 'cancelled', 'disputed')),
+    status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'pending_worker', 'pending_client', 'active', 'pending_review', 'completed', 'cancelled', 'disputed')),
     client_signed_at TIMESTAMP WITH TIME ZONE,
     worker_signed_at TIMESTAMP WITH TIME ZONE,
     completed_at TIMESTAMP WITH TIME ZONE,
+    delivery_notes TEXT,
+    delivery_url TEXT,
+    work_submitted_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

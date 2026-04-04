@@ -5,7 +5,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.stubEnv('JWT_SECRET', 'test-jwt-secret-at-least-32-characters-long!!');
 vi.stubEnv('JWT_REFRESH_SECRET', 'test-refresh-secret-at-least-32-chars!!');
 
-const { generateAccessToken, generateRefreshToken, verifyAccessToken, verifyRefreshToken, generateTokenPair } = await import('../lib/jwt');
+let generateAccessToken: any, generateRefreshToken: any, verifyAccessToken: any, verifyRefreshToken: any, generateTokenPair: any;
+
+import { beforeAll } from 'vitest';
+
+beforeAll(async () => {
+  const jwt = await import('../lib/jwt');
+  generateAccessToken = jwt.generateAccessToken;
+  generateRefreshToken = jwt.generateRefreshToken;
+  verifyAccessToken = jwt.verifyAccessToken;
+  verifyRefreshToken = jwt.verifyRefreshToken;
+  generateTokenPair = jwt.generateTokenPair;
+});
 
 describe('JWT Token Management', () => {
   const testPayload = {

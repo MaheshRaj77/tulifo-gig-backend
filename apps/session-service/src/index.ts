@@ -21,9 +21,8 @@ app.get('/health', (_req: Request, res: Response) => {
   res.status(200).json({ status: 'ok', service: 'session-service' });
 });
 
-// Routes will be imported here
-// import sessionRoutes from './routes/session.routes';
-// app.use('/api/sessions', sessionRoutes);
+// Session management is handled by auth-service (JWT refresh token families in Redis).
+// This service is reserved for future analytics (active user tracking, login history).
 
 app.listen(PORT, () => {
   console.log(`Session Service running on port ${PORT}`);

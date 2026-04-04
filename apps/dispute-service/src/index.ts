@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import { config } from 'dotenv';
 import { Pool } from 'pg';
 import axios from 'axios';
+import jwt from 'jsonwebtoken';
 
 config();
 
@@ -27,20 +28,50 @@ app.get('/health', async (req, res) => {
   res.json({ status: 'healthy', service: 'dispute-service', database: dbStatus });
 });
 
+// Auth middleware
+function authenticate(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'No token provided' });
+  }
+  const token = authHeader.slice(7);
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET!);
+    (req as any).user = payload;
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
+
 // Create dispute
-app.post('/api/v1/disputes', async (req, res) => {
-  const { bookingId, openedBy, reason, description, escrowId } = req.body;
+app.post('/api/disputes', authenticate, async (req, res) => {
+  const user = (req as any).user;
+  const { bookingId, projectId, reason, description, escrowId } = req.body;
+
+  // Input validation
+  if (!reason || typeof reason !== 'string' || reason.trim().length < 3) {
+    return res.status(400).json({ error: 'reason is required (min 3 characters)' });
+  }
+  if (!description || typeof description !== 'string' || description.trim().length < 10) {
+    return res.status(400).json({ error: 'description is required (min 10 characters)' });
+  }
+  if (!bookingId && !projectId) {
+    return res.status(400).json({ error: 'bookingId or projectId is required' });
+  }
+
+  const openedBy = user.userId; // Always use authenticated user, never trust body
 
   try {
     // Freeze escrow if provided
     if (escrowId) {
-      await axios.post(`${ESCROW_SERVICE_URL}/api/v1/escrow/${escrowId}/freeze`);
+      await axios.post(`${ESCROW_SERVICE_URL}/api/escrow/${escrowId}/freeze`);
     }
 
     const result = await pgPool.query(
-      `INSERT INTO disputes (booking_id, opened_by, reason, description, status, escrow_id)
-       VALUES ($1, $2, $3, $4, 'open', $5) RETURNING *`,
-      [bookingId, openedBy, reason, description, escrowId]
+      `INSERT INTO disputes (booking_id, project_id, opened_by, reason, description, status, escrow_id)
+       VALUES ($1, $2, $3, $4, $5, 'open', $6) RETURNING *`,
+      [bookingId ?? null, projectId ?? null, openedBy, reason.trim(), description.trim(), escrowId ?? null]
     );
 
     res.status(201).json(result.rows[0]);
@@ -51,7 +82,8 @@ app.post('/api/v1/disputes', async (req, res) => {
 });
 
 // Get dispute by ID
-app.get('/api/v1/disputes/:id', async (req, res) => {
+app.get('/api/disputes/:id', authenticate, async (req, res) => {
+  const user = (req as any).user;
   try {
     const result = await pgPool.query(
       'SELECT * FROM disputes WHERE id = $1',
@@ -62,15 +94,25 @@ app.get('/api/v1/disputes/:id', async (req, res) => {
       return res.status(404).json({ error: 'Dispute not found' });
     }
 
-    res.json(result.rows[0]);
+    const dispute = result.rows[0];
+    // Only parties to the dispute or admins can view it
+    if (user.userId !== dispute.opened_by && user.userId !== dispute.respondent_id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    res.json(dispute);
   } catch (error_) {
     console.error('Fetch dispute error:', error_);
     res.status(500).json({ error: 'Failed to fetch dispute' });
   }
 });
 
-// Get all disputes (Admin)
-app.get('/api/v1/disputes', async (req, res) => {
+// Get all disputes — admin only; must be registered BEFORE /:id to avoid param shadowing
+app.get('/api/disputes', authenticate, async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
   try {
     const result = await pgPool.query(
       `SELECT * FROM disputes ORDER BY created_at DESC`
@@ -82,8 +124,13 @@ app.get('/api/v1/disputes', async (req, res) => {
   }
 });
 
-// Get disputes by user
-app.get('/api/v1/disputes/user/:userId', async (req, res) => {
+// Get disputes by user (own disputes only)
+app.get('/api/disputes/user/:userId', authenticate, async (req, res) => {
+  const user = (req as any).user;
+  // Users can only fetch their own disputes; admins can fetch anyone's
+  if (user.userId !== req.params.userId && user.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
   try {
     const result = await pgPool.query(
       `SELECT * FROM disputes 
@@ -100,14 +147,15 @@ app.get('/api/v1/disputes/user/:userId', async (req, res) => {
 });
 
 // Add evidence to dispute
-app.post('/api/v1/disputes/:id/evidence', async (req, res) => {
-  const { userId, evidenceType, description, attachments } = req.body;
+app.post('/api/disputes/:id/evidence', authenticate, async (req, res) => {
+  const user = (req as any).user;
+  const { evidenceType, description, attachments } = req.body;
 
   try {
     const result = await pgPool.query(
       `INSERT INTO dispute_evidence (dispute_id, submitted_by, evidence_type, description, attachments)
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [req.params.id, userId, evidenceType, description, JSON.stringify(attachments)]
+      [req.params.id, user.userId, evidenceType, description, JSON.stringify(attachments)]
     );
 
     res.status(201).json(result.rows[0]);
@@ -117,8 +165,12 @@ app.post('/api/v1/disputes/:id/evidence', async (req, res) => {
   }
 });
 
-// Update dispute status
-app.patch('/api/v1/disputes/:id', async (req, res) => {
+// Update dispute status (admin only)
+app.patch('/api/disputes/:id', authenticate, async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
   const { status, resolution, resolvedBy } = req.body;
 
   try {

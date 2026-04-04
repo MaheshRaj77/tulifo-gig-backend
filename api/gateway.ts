@@ -38,7 +38,8 @@ const PUBLIC_PATHS = [
   '/api/auth/refresh',
   '/api/auth/forgot-password',
   '/api/auth/reset-password',
-  '/api/workers',        // Public worker search
+  '/api/workers',              // Public worker search
+  '/api/payments/webhook',    // Stripe webhook — verified by Stripe signature, not JWT
   '/health',
 ];
 
@@ -76,7 +77,9 @@ async function proxyRequest(
   pathRewrite?: string
 ) {
   try {
-    const path = pathRewrite || req.url?.replace(/^\/api\/[^/]+/, '') || '/';
+    // Forward the full normalized path so service-internal route tables (app.use('/api/xxx', router)) match correctly.
+    // pathRewrite carries the normalized path (v1 prefix already stripped by the caller).
+    const path = pathRewrite || req.url || '/';
     const url = new URL(serviceUrl);
     const queryString = req.url?.includes('?') ? `?${req.url.split('?')[1]}` : '';
     const fullUrl = `${url.protocol}//${url.host}${path}${queryString}`;
@@ -177,24 +180,28 @@ export default async function handler(
     '/api/auth': process.env.AUTH_SERVICE_URL || 'https://auth-service.onrender.com',
     '/api/users': process.env.USER_SERVICE_URL || 'https://user-service.onrender.com',
     '/api/projects': process.env.PROJECT_SERVICE_URL || 'https://project-service.onrender.com',
+    '/api/agreements': process.env.PROJECT_SERVICE_URL || 'https://project-service.onrender.com',
     '/api/payments': process.env.PAYMENT_SERVICE_URL || 'https://payment-service.onrender.com',
     '/api/messages': process.env.MESSAGE_SERVICE_URL || 'https://message-service.onrender.com',
     '/api/notifications': process.env.NOTIFICATION_SERVICE_URL || 'https://notification-service.onrender.com',
     '/api/bookings': process.env.BOOKING_SERVICE_URL || 'https://booking-service.onrender.com',
     '/api/availability': process.env.BOOKING_SERVICE_URL || 'https://booking-service.onrender.com',
     '/api/matching': process.env.MATCHING_SERVICE_URL || 'https://matching-service.onrender.com',
-    '/api/sessions': process.env.SESSION_SERVICE_URL || 'https://session-service.onrender.com',
     '/api/workers': process.env.WORKER_SERVICE_URL || 'https://worker-service.onrender.com',
+    '/api/clients': process.env.CLIENT_SERVICE_URL || 'https://client-service.onrender.com',
     '/api/escrow': process.env.ESCROW_SERVICE_URL || 'https://escrow-service.onrender.com',
     '/api/disputes': process.env.DISPUTE_SERVICE_URL || 'https://dispute-service.onrender.com',
     '/api/reviews': process.env.REVIEW_SERVICE_URL || 'https://review-service.onrender.com',
+    '/api/badges': process.env.REVIEW_SERVICE_URL || 'https://review-service.onrender.com',
     '/api/search': process.env.SEARCH_SERVICE_URL || 'https://search-service.onrender.com',
   };
 
   const serviceUrl = Object.entries(routes).find(([prefix]) => normalizedPath.startsWith(prefix))?.[1];
 
   if (serviceUrl) {
-    return proxyRequest(serviceUrl, req, res);
+    // Pass the normalized path (version prefix already stripped above) so services receive the
+    // canonical path they register: /api/xxx/... not /api/v1/xxx/...
+    return proxyRequest(serviceUrl, req, res, normalizedPath);
   }
 
   return res.status(404).json({

@@ -17,6 +17,42 @@ function validatePasswordPolicy(password: string): { valid: boolean; errors: str
   return { valid: errors.length === 0, errors };
 }
 
+// ─── Admin: User stats — MUST be registered before GET /:id ──────
+router.get('/stats', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (req.user!.role !== 'admin') {
+      return res.status(403).json({ success: false, error: { message: 'Forbidden' } });
+    }
+
+    const result = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE role = 'worker') AS total_workers,
+        COUNT(*) FILTER (WHERE role = 'client') AS total_clients,
+        COUNT(*) FILTER (WHERE role = 'admin')  AS total_admins,
+        COUNT(*) FILTER (WHERE status = 'active') AS active_users,
+        COUNT(*) FILTER (WHERE status = 'suspended') AS suspended_users,
+        COUNT(*) FILTER (WHERE status = 'pending' OR is_verified = FALSE) AS pending_users,
+        COUNT(*) AS total_users
+      FROM users
+    `);
+
+    const row = result.rows[0];
+    res.json({
+      success: true,
+      data: {
+        totalUsers: parseInt(row.total_users, 10),
+        totalWorkers: parseInt(row.total_workers, 10),
+        totalClients: parseInt(row.total_clients, 10),
+        activeUsers: parseInt(row.active_users, 10),
+        suspendedUsers: parseInt(row.suspended_users, 10),
+        pendingUsers: parseInt(row.pending_users, 10),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Get user by ID
 router.get('/:id', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -159,6 +195,125 @@ router.put('/:id/password', authenticate, async (req: Request, res: Response, ne
     res.json({
       success: true,
       data: { message: 'Password changed successfully. Please log in again on all devices.' },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ─── Admin: List all users (paginated, filterable) ─────────────────
+router.get('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (req.user!.role !== 'admin') {
+      return res.status(403).json({ success: false, error: { message: 'Forbidden' } });
+    }
+
+    const { role, status, search, page = 1, limit = 20 } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
+    const params: (string | number)[] = [];
+    let paramCount = 0;
+    let conditions = 'WHERE 1=1';
+
+    if (role && typeof role === 'string') {
+      paramCount++;
+      conditions += ` AND u.role = $${paramCount}`;
+      params.push(role);
+    }
+    if (status && typeof status === 'string') {
+      paramCount++;
+      conditions += ` AND u.status = $${paramCount}`;
+      params.push(status);
+    }
+    if (search && typeof search === 'string' && search.trim()) {
+      paramCount++;
+      conditions += ` AND (u.first_name ILIKE $${paramCount} OR u.last_name ILIKE $${paramCount} OR u.email ILIKE $${paramCount})`;
+      params.push(`%${search.trim()}%`);
+    }
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM users u ${conditions}`,
+      params
+    );
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    params.push(Number(limit), offset);
+    const result = await pool.query(
+      `SELECT u.id, u.email, u.first_name, u.last_name, u.role, u.status,
+              u.avatar_url, u.is_verified, u.created_at
+       FROM users u ${conditions}
+       ORDER BY u.created_at DESC
+       LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`,
+      params
+    );
+
+    res.json({
+      success: true,
+      data: result.rows.map(u => ({
+        id: u.id,
+        email: u.email,
+        firstName: u.first_name,
+        lastName: u.last_name,
+        role: u.role,
+        status: u.status,
+        avatarUrl: u.avatar_url,
+        isVerified: u.is_verified,
+        createdAt: u.created_at,
+      })),
+      pagination: { total, page: Number(page), limit: Number(limit) },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ─── Admin: Update user status (ban / suspend / activate) ──────────
+router.put('/:id/status', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (req.user!.role !== 'admin') {
+      return res.status(403).json({ success: false, error: { message: 'Forbidden' } });
+    }
+
+    const { id } = req.params;
+    const { status } = req.body;
+    const ALLOWED_STATUSES = ['active', 'suspended', 'banned'];
+
+    if (!ALLOWED_STATUSES.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: { message: `status must be one of: ${ALLOWED_STATUSES.join(', ')}` },
+      });
+    }
+
+    const result = await pool.query(
+      `UPDATE users SET status = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING id, email, first_name, last_name, role, status`,
+      [status, id]
+    );
+
+    if (result.rows.length === 0) {
+      throw new NotFoundError('User');
+    }
+
+    // If banning/suspending, revoke all active refresh tokens
+    if (status === 'banned' || status === 'suspended') {
+      await pool.query(
+        'UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL',
+        [id]
+      );
+    }
+
+    const user = result.rows[0];
+    res.json({
+      success: true,
+      data: {
+        id: user.id,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        role: user.role,
+        status: user.status,
+      },
     });
   } catch (error) {
     next(error);

@@ -288,7 +288,7 @@ router.post('/:id/sign', authenticate, async (req: Request, res: Response, next:
       throw new ForbiddenError();
     }
 
-    if (['active', 'completed', 'cancelled'].includes(agreement.status)) {
+    if (['active', 'pending_review', 'completed', 'cancelled'].includes(agreement.status)) {
       throw new ConflictError(`Agreement is already ${agreement.status}`);
     }
 
@@ -336,6 +336,87 @@ router.post('/:id/sign', authenticate, async (req: Request, res: Response, next:
   }
 });
 
+// ── Deliver Work (worker submits deliverables for client review) ──
+
+const deliverWorkSchema = z.object({
+  deliveryNotes: z.string().min(10),
+  deliveryUrl: z.string().url().optional().or(z.literal('')),
+});
+
+router.post('/:id/deliver', authenticate, authorize('worker', 'admin'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const data = validate(deliverWorkSchema, req.body);
+
+    const existing = await pool.query('SELECT * FROM agreements WHERE id = $1', [id]);
+    if (existing.rows.length === 0) throw new NotFoundError('Agreement');
+
+    const agreement = existing.rows[0];
+    if (agreement.worker_id !== req.user!.userId && req.user!.role !== 'admin') {
+      throw new ForbiddenError();
+    }
+    if (agreement.status !== 'active') {
+      throw new ConflictError('Work can only be submitted on active agreements');
+    }
+
+    const now = new Date().toISOString();
+    await pool.query(
+      `UPDATE agreements
+         SET status = 'pending_review',
+             delivery_notes = $1,
+             delivery_url = $2,
+             work_submitted_at = $3
+       WHERE id = $4`,
+      [data.deliveryNotes, data.deliveryUrl || null, now, id]
+    );
+
+    const updated = await pool.query('SELECT * FROM agreements WHERE id = $1', [id]);
+    res.json({ success: true, data: formatAgreement(updated.rows[0]) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ── Request Revision (client sends work back to worker) ──
+
+const requestRevisionSchema = z.object({
+  feedback: z.string().min(10),
+});
+
+router.post('/:id/request-revision', authenticate, authorize('client', 'admin'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const data = validate(requestRevisionSchema, req.body);
+
+    const existing = await pool.query('SELECT * FROM agreements WHERE id = $1', [id]);
+    if (existing.rows.length === 0) throw new NotFoundError('Agreement');
+
+    const agreement = existing.rows[0];
+    if (agreement.client_id !== req.user!.userId && req.user!.role !== 'admin') {
+      throw new ForbiddenError();
+    }
+    if (agreement.status !== 'pending_review') {
+      throw new ConflictError('Revision can only be requested when work is pending review');
+    }
+
+    // Reset to active so worker can resubmit; append feedback to delivery_notes
+    const revisedNotes = `${agreement.delivery_notes || ''}\n\n--- Revision requested ---\n${data.feedback}`;
+    await pool.query(
+      `UPDATE agreements
+         SET status = 'active',
+             delivery_notes = $1,
+             work_submitted_at = NULL
+       WHERE id = $2`,
+      [revisedNotes, id]
+    );
+
+    const updated = await pool.query('SELECT * FROM agreements WHERE id = $1', [id]);
+    res.json({ success: true, data: formatAgreement(updated.rows[0]) });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ── Complete Agreement ──
 
 router.post('/:id/complete', authenticate, async (req: Request, res: Response, next: NextFunction) => {
@@ -349,8 +430,8 @@ router.post('/:id/complete', authenticate, async (req: Request, res: Response, n
     if (agreement.client_id !== req.user!.userId && req.user!.role !== 'admin') {
       throw new ForbiddenError();
     }
-    if (agreement.status !== 'active') {
-      throw new ConflictError('Only active agreements can be completed');
+    if (!['active', 'pending_review'].includes(agreement.status)) {
+      throw new ConflictError('Only active or pending-review agreements can be completed');
     }
 
     const now = new Date().toISOString();
@@ -420,6 +501,9 @@ function formatAgreement(row: any) {
     clientSignedAt: row.client_signed_at,
     workerSignedAt: row.worker_signed_at,
     completedAt: row.completed_at,
+    deliveryNotes: row.delivery_notes,
+    deliveryUrl: row.delivery_url,
+    workSubmittedAt: row.work_submitted_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

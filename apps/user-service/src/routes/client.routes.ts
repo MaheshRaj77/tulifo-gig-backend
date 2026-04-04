@@ -1,8 +1,26 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { pool } from '../index';
 import { authenticate, NotFoundError } from '../lib';
 
 const router: Router = Router();
+
+// ─── Zod Validation Schema ────────────────────────────────────────
+const clientProfileUpdateSchema = z.object({
+  clientType: z.enum(['individual', 'business']).optional(),
+  contactName: z.string().min(2).optional().or(z.literal('')),
+  businessEmail: z.string().email().optional().or(z.literal('')),
+  businessPhone: z.string().min(5).optional().or(z.literal('')),
+  companyName: z.string().min(2).optional().or(z.literal('')),
+  companySize: z.enum(['1-10', '11-50', '51-200', '201-500', '500+']).optional(),
+  industry: z.string().min(2).optional().or(z.literal('')),
+  companyDescription: z.string().max(500).optional().or(z.literal('')),
+  location: z.string().min(2).optional(),
+  country: z.string().min(2).optional(),
+  timezone: z.string().min(2).optional(),
+  budgetRange: z.enum(['<$5k', '$5k-$10k', '$10k-$25k', '$25k-$50k', '$50k+']).optional(),
+  preferredContractTypes: z.array(z.string()).optional(),
+});
 
 // Get client profile (supports both individual and business)
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
@@ -15,7 +33,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
               c.company_name, c.company_size, c.industry, c.company_description,
               c.location, c.country, c.timezone, c.budget_range,
               c.preferred_contract_types,
-              c.projects_posted, c.verified, c.verification_status, c.created_at
+              c.projects_posted, u.is_verified as verified, c.verification_status, c.created_at
        FROM users u
        JOIN client_profiles c ON u.id = c.user_id
        WHERE u.id = $1`,
@@ -62,56 +80,47 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
 router.put('/:id', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const userId = typeof req.user!.userId === 'string' ? parseInt(req.user!.userId) : req.user!.userId;
-    if (userId !== parseInt(id)) {
+
+    // Authorization: compare as strings (UUIDs)
+    if (req.user!.userId !== id) {
       return res.status(403).json({ success: false, error: { message: 'Forbidden' } });
     }
 
-    const {
-      contactName,
-      businessEmail,
-      businessPhone,
-      companyName,
-      companySize,
-      industry,
-      companyDescription,
-      location,
-      country,
-      timezone,
-      budgetRange,
-      preferredContractTypes,
-    } = req.body;
+    // Validate input with Zod
+    const data = clientProfileUpdateSchema.parse(req.body);
 
     const result = await pool.query(
       `UPDATE client_profiles SET
-        contact_name = COALESCE($1, contact_name),
-        business_email = COALESCE($2, business_email),
-        business_phone = COALESCE($3, business_phone),
-        company_name = COALESCE($4, company_name),
-        company_size = COALESCE($5, company_size),
-        industry = COALESCE($6, industry),
-        company_description = COALESCE($7, company_description),
-        location = COALESCE($8, location),
-        country = COALESCE($9, country),
-        timezone = COALESCE($10, timezone),
-        budget_range = COALESCE($11, budget_range),
-        preferred_contract_types = COALESCE($12, preferred_contract_types),
+        client_type = COALESCE($1, client_type),
+        contact_name = COALESCE($2, contact_name),
+        business_email = COALESCE($3, business_email),
+        business_phone = COALESCE($4, business_phone),
+        company_name = COALESCE($5, company_name),
+        company_size = COALESCE($6, company_size),
+        industry = COALESCE($7, industry),
+        company_description = COALESCE($8, company_description),
+        location = COALESCE($9, location),
+        country = COALESCE($10, country),
+        timezone = COALESCE($11, timezone),
+        budget_range = COALESCE($12, budget_range),
+        preferred_contract_types = COALESCE($13, preferred_contract_types),
         updated_at = NOW()
-       WHERE user_id = $13
+       WHERE user_id = $14
        RETURNING *`,
       [
-        contactName || null,
-        businessEmail || null,
-        businessPhone || null,
-        companyName || null,
-        companySize || null,
-        industry || null,
-        companyDescription || null,
-        location || null,
-        country || null,
-        timezone || null,
-        budgetRange || null,
-        preferredContractTypes ? JSON.stringify(preferredContractTypes) : null,
+        data.clientType || null,
+        data.contactName || null,
+        data.businessEmail || null,
+        data.businessPhone || null,
+        data.companyName || null,
+        data.companySize || null,
+        data.industry || null,
+        data.companyDescription || null,
+        data.location || null,
+        data.country || null,
+        data.timezone || null,
+        data.budgetRange || null,
+        data.preferredContractTypes ? JSON.stringify(data.preferredContractTypes) : null,
         id,
       ]
     );
@@ -152,3 +161,4 @@ router.put('/:id', authenticate, async (req: Request, res: Response, next: NextF
 });
 
 export default router;
+

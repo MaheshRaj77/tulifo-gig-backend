@@ -89,7 +89,7 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID string, rol
 	}
 	defer rows.Close()
 
-	var bookings []*models.Booking
+	var bookings []*models.Booking = make([]*models.Booking, 0)
 	for rows.Next() {
 		b := &models.Booking{}
 		w := &models.UserInfo{}

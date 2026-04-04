@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"booking-service/internal/models"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -31,11 +33,20 @@ func (s *AvailabilityService) GetWorkerAvailability(ctx context.Context, workerI
 	var availabilityJSON []byte
 	err := s.db.QueryRow(ctx, "SELECT availability FROM worker_profiles WHERE user_id = $1", workerID).Scan(&availabilityJSON)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return []models.AvailabilitySlot{}, nil
+		}
 		return nil, err
 	}
 
+	if availabilityJSON == nil {
+		return []models.AvailabilitySlot{}, nil
+	}
+
 	var slots []models.AvailabilitySlot
-	json.Unmarshal(availabilityJSON, &slots)
+	if err := json.Unmarshal(availabilityJSON, &slots); err != nil {
+		return []models.AvailabilitySlot{}, nil
+	}
 
 	return slots, nil
 }
@@ -45,6 +56,10 @@ func (s *AvailabilityService) GetAvailableSlots(ctx context.Context, workerID st
 	availability, err := s.GetWorkerAvailability(ctx, workerID)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(availability) == 0 {
+		return []models.TimeSlot{}, nil
 	}
 
 	dayOfWeek := int(date.Weekday())
@@ -124,7 +139,13 @@ func (s *AvailabilityService) GetAvailableSlots(ctx context.Context, workerID st
 
 func (s *AvailabilityService) UpdateAvailability(ctx context.Context, workerID string, slots []models.AvailabilitySlot) error {
 	slotsJSON, _ := json.Marshal(slots)
-	_, err := s.db.Exec(ctx, "UPDATE worker_profiles SET availability = $1 WHERE user_id = $2", slotsJSON, workerID)
+
+	// Use upsert: worker_profiles row may not exist yet
+	_, err := s.db.Exec(ctx, `
+		INSERT INTO worker_profiles (user_id, availability)
+		VALUES ($1, $2)
+		ON CONFLICT (user_id) DO UPDATE SET availability = $2
+	`, workerID, slotsJSON)
 	return err
 }
 

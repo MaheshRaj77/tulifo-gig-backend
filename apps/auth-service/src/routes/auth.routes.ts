@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 import { z } from 'zod';
 import { pool } from '../index';
 import {
@@ -19,6 +19,8 @@ import {
   checkRateLimit,
   RATE_LIMITS,
   sendPasswordResetEmail,
+  sendVerificationEmail,
+  verifyGoogleIdToken,
 } from '../lib';
 import { audit } from '../lib/audit-logger';
 
@@ -62,6 +64,11 @@ const loginSchema = z.object({
   password: z.string(),
 });
 
+const googleLoginSchema = z.object({
+  idToken: z.string().min(1),
+  role: z.enum(['worker', 'client']).optional(),
+});
+
 const changePasswordSchema = z.object({
   currentPassword: z.string(),
   newPassword: z.string().min(8),
@@ -76,11 +83,20 @@ const resetPasswordSchema = z.object({
   newPassword: z.string().min(8),
 });
 
+const verifyEmailSchema = z.object({
+  token: z.string().min(1),
+});
+
+const resendVerificationSchema = z.object({
+  email: z.string().email(),
+});
+
 // ─── Constants ─────────────────────────────────────────────────────
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 const PASSWORD_RESET_EXPIRY_MS = 60 * 60 * 1000; // 1 hour
+const EMAIL_VERIFICATION_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // ─── Helper: Store refresh token in DB ─────────────────────────────
 
@@ -237,6 +253,30 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
 
     await storeRefreshToken(user.id, tokens.refreshToken, tokens.familyId, req);
 
+    // Send verification email (non-blocking — don't fail registration if email fails)
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationTokenHash = crypto.createHash('sha256').update(verificationToken).digest('hex');
+    const verificationExpires = new Date(Date.now() + EMAIL_VERIFICATION_EXPIRY_MS);
+    try {
+      await pool.query(
+        `INSERT INTO email_verification_tokens (user_id, token_hash, expires_at)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (user_id) DO UPDATE SET token_hash = $2, expires_at = $3, created_at = NOW()`,
+        [user.id, verificationTokenHash, verificationExpires]
+      );
+      await sendVerificationEmail(user.email, verificationToken, user.first_name);
+    } catch (emailError) {
+      // Log but don't block registration — user can resend later
+      audit({
+        event: 'AUTH_VERIFICATION_EMAIL_FAILED',
+        userId: user.id,
+        email: maskEmail(user.email),
+        ip,
+        requestId: req.requestId,
+        details: { error: (emailError as Error).message },
+      });
+    }
+
     audit({
       event: 'AUTH_REGISTER',
       userId: user.id,
@@ -386,6 +426,280 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
         },
         accessToken: tokens.accessToken,
         expiresIn: tokens.expiresIn,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// GOOGLE LOGIN (Firebase ID Token -> Local JWT session)
+// ═══════════════════════════════════════════════════════════════════
+router.post('/google', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const ip = getClientIp(req);
+    const data = validate(googleLoginSchema, req.body);
+
+    const rl = await checkRateLimit('login', ip, RATE_LIMITS.login);
+    if (!rl.allowed) {
+      res.setHeader('Retry-After', Math.ceil(rl.retryAfterMs / 1000));
+      return res.status(429).json({
+        success: false,
+        error: { code: 'RATE_LIMITED', message: 'Too many login attempts. Please try again later.' },
+      });
+    }
+
+    const decoded = await verifyGoogleIdToken(data.idToken);
+    const email = decoded.email?.toLowerCase();
+    if (!email) {
+      throw new UnauthorizedError('Google account email is required');
+    }
+
+    const fullName = (decoded.name || '').trim();
+    const nameParts = fullName ? fullName.split(/\s+/) : [];
+    const firstName = nameParts[0] || 'Google';
+    const lastName = nameParts.slice(1).join(' ') || 'User';
+    const avatarUrl = decoded.picture || null;
+
+    const client = await pool.connect();
+    let user;
+    let isNewUser = false;
+
+    try {
+      await client.query('BEGIN');
+
+      const existingResult = await client.query(
+        `SELECT id, email, first_name, last_name, role, is_active, is_verified, avatar_url
+         FROM users
+         WHERE email = $1
+         FOR UPDATE`,
+        [email]
+      );
+
+      if (existingResult.rows.length > 0) {
+        const existingUser = existingResult.rows[0];
+
+        if (!existingUser.is_active) {
+          throw new UnauthorizedError('Account is deactivated');
+        }
+
+        const updatedResult = await client.query(
+          `UPDATE users
+           SET first_name = COALESCE(NULLIF($2, ''), first_name),
+               last_name = COALESCE(NULLIF($3, ''), last_name),
+               avatar_url = COALESCE($4, avatar_url),
+               is_verified = CASE WHEN $5 THEN true ELSE is_verified END,
+               updated_at = NOW()
+           WHERE id = $1
+           RETURNING id, email, first_name, last_name, role, is_verified, avatar_url, created_at`,
+          [existingUser.id, firstName, lastName, avatarUrl, Boolean(decoded.email_verified)]
+        );
+
+        user = updatedResult.rows[0];
+      } else {
+        isNewUser = true;
+        const role = data.role || 'client';
+        const randomPassword = crypto.randomBytes(32).toString('hex');
+        const passwordHash = await bcrypt.hash(randomPassword, 12);
+
+        const createdUser = await client.query(
+          `INSERT INTO users (email, password_hash, first_name, last_name, role, is_verified, avatar_url)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING id, email, first_name, last_name, role, is_verified, avatar_url, created_at`,
+          [email, passwordHash, firstName, lastName, role, Boolean(decoded.email_verified), avatarUrl]
+        );
+
+        user = createdUser.rows[0];
+
+        if (role === 'worker') {
+          await client.query('INSERT INTO worker_profiles (user_id) VALUES ($1)', [user.id]);
+        } else {
+          await client.query('INSERT INTO client_profiles (user_id) VALUES ($1)', [user.id]);
+        }
+      }
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    const tokens = generateTokenPair({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    });
+
+    await storeRefreshToken(user.id, tokens.refreshToken, tokens.familyId, req);
+
+    audit({
+      event: 'AUTH_LOGIN_SUCCESS',
+      userId: user.id,
+      email: maskEmail(user.email),
+      ip,
+      requestId: req.requestId,
+      details: { provider: 'google', isNewUser },
+      userAgent: req.headers['user-agent'],
+    });
+
+    setRefreshTokenCookie(res, tokens.refreshToken);
+
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.first_name,
+          lastName: user.last_name,
+          role: user.role,
+          avatarUrl: user.avatar_url,
+          isVerified: user.is_verified,
+          createdAt: user.created_at,
+        },
+        accessToken: tokens.accessToken,
+        expiresIn: tokens.expiresIn,
+        isNewUser,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// GITHUB SIGN-IN (via Firebase)
+// ═══════════════════════════════════════════════════════════════════
+router.post('/github', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const ip = getClientIp(req);
+    const data = validate(googleLoginSchema, req.body);
+
+    const rl = await checkRateLimit('login', ip, RATE_LIMITS.login);
+    if (!rl.allowed) {
+      res.setHeader('Retry-After', Math.ceil(rl.retryAfterMs / 1000));
+      return res.status(429).json({
+        success: false,
+        error: { code: 'RATE_LIMITED', message: 'Too many login attempts. Please try again later.' },
+      });
+    }
+
+    const decoded = await verifyGoogleIdToken(data.idToken);
+    const email = decoded.email?.toLowerCase();
+    if (!email) {
+      throw new UnauthorizedError('GitHub account email is required');
+    }
+
+    const fullName = (decoded.name || '').trim();
+    const nameParts = fullName ? fullName.split(/\s+/) : [];
+    const firstName = nameParts[0] || 'GitHub';
+    const lastName = nameParts.slice(1).join(' ') || 'User';
+    const avatarUrl = decoded.picture || null;
+
+    const client = await pool.connect();
+    let user;
+    let isNewUser = false;
+
+    try {
+      await client.query('BEGIN');
+
+      const existingResult = await client.query(
+        `SELECT id, email, first_name, last_name, role, is_active, is_verified, avatar_url
+         FROM users
+         WHERE email = $1
+         FOR UPDATE`,
+        [email]
+      );
+
+      if (existingResult.rows.length > 0) {
+        const existingUser = existingResult.rows[0];
+
+        if (!existingUser.is_active) {
+          throw new UnauthorizedError('Account is deactivated');
+        }
+
+        const updatedResult = await client.query(
+          `UPDATE users
+           SET first_name = COALESCE(NULLIF($2, ''), first_name),
+               last_name = COALESCE(NULLIF($3, ''), last_name),
+               avatar_url = COALESCE($4, avatar_url),
+               is_verified = CASE WHEN $5 THEN true ELSE is_verified END,
+               updated_at = NOW()
+           WHERE id = $1
+           RETURNING id, email, first_name, last_name, role, is_verified, avatar_url, created_at`,
+          [existingUser.id, firstName, lastName, avatarUrl, Boolean(decoded.email_verified)]
+        );
+
+        user = updatedResult.rows[0];
+      } else {
+        isNewUser = true;
+        const role = data.role || 'client';
+        const randomPassword = crypto.randomBytes(32).toString('hex');
+        const passwordHash = await bcrypt.hash(randomPassword, 12);
+
+        const createdUser = await client.query(
+          `INSERT INTO users (email, password_hash, first_name, last_name, role, is_verified, avatar_url)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING id, email, first_name, last_name, role, is_verified, avatar_url, created_at`,
+          [email, passwordHash, firstName, lastName, role, Boolean(decoded.email_verified), avatarUrl]
+        );
+
+        user = createdUser.rows[0];
+
+        if (role === 'worker') {
+          await client.query('INSERT INTO worker_profiles (user_id) VALUES ($1)', [user.id]);
+        } else {
+          await client.query('INSERT INTO client_profiles (user_id) VALUES ($1)', [user.id]);
+        }
+      }
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    const tokens = generateTokenPair({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    });
+
+    await storeRefreshToken(user.id, tokens.refreshToken, tokens.familyId, req);
+
+    audit({
+      event: 'AUTH_LOGIN_SUCCESS',
+      userId: user.id,
+      email: maskEmail(user.email),
+      ip,
+      requestId: req.requestId,
+      details: { provider: 'github', isNewUser },
+      userAgent: req.headers['user-agent'],
+    });
+
+    setRefreshTokenCookie(res, tokens.refreshToken);
+
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.first_name,
+          lastName: user.last_name,
+          role: user.role,
+          avatarUrl: user.avatar_url,
+          isVerified: user.is_verified,
+          createdAt: user.created_at,
+        },
+        accessToken: tokens.accessToken,
+        expiresIn: tokens.expiresIn,
+        isNewUser,
       },
     });
   } catch (error) {
@@ -823,6 +1137,133 @@ router.post('/reset-password', async (req: Request, res: Response, next: NextFun
 });
 
 // ═══════════════════════════════════════════════════════════════════
+// VERIFY EMAIL
+// ═══════════════════════════════════════════════════════════════════
+router.post('/verify-email', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const ip = getClientIp(req);
+
+    const rl = await checkRateLimit('verifyEmail', ip, { windowMs: 15 * 60 * 1000, maxRequests: 20 });
+    if (!rl.allowed) {
+      res.setHeader('Retry-After', Math.ceil(rl.retryAfterMs / 1000));
+      return res.status(429).json({
+        success: false,
+        error: { code: 'RATE_LIMITED', message: 'Too many verification attempts. Please try again later.' },
+      });
+    }
+
+    const data = validate(verifyEmailSchema, req.body);
+    const tokenHash = crypto.createHash('sha256').update(data.token).digest('hex');
+
+    const tokenResult = await pool.query(
+      `SELECT evt.id, evt.user_id, evt.expires_at, u.email
+       FROM email_verification_tokens evt
+       JOIN users u ON u.id = evt.user_id
+       WHERE evt.token_hash = $1`,
+      [tokenHash]
+    );
+
+    if (tokenResult.rows.length === 0) {
+      throw new ValidationError('Invalid or expired verification link. Please request a new one.');
+    }
+
+    const record = tokenResult.rows[0];
+
+    if (new Date(record.expires_at) < new Date()) {
+      await pool.query('DELETE FROM email_verification_tokens WHERE id = $1', [record.id]);
+      throw new ValidationError('Verification link has expired. Please request a new one.');
+    }
+
+    // Mark email as verified and delete the token
+    await pool.query(
+      'UPDATE users SET is_verified = true, updated_at = NOW() WHERE id = $1',
+      [record.user_id]
+    );
+    await pool.query('DELETE FROM email_verification_tokens WHERE user_id = $1', [record.user_id]);
+
+    audit({
+      event: 'AUTH_EMAIL_VERIFIED',
+      userId: record.user_id,
+      email: maskEmail(record.email),
+      ip,
+      requestId: req.requestId,
+    });
+
+    res.json({
+      success: true,
+      data: { message: 'Email verified successfully. You can now access all features.' },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// RESEND VERIFICATION EMAIL
+// ═══════════════════════════════════════════════════════════════════
+router.post('/resend-verification', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const ip = getClientIp(req);
+
+    const rl = await checkRateLimit('resendVerification', `user:${req.user!.userId}`, { windowMs: 60 * 60 * 1000, maxRequests: 3 });
+    if (!rl.allowed) {
+      res.setHeader('Retry-After', Math.ceil(rl.retryAfterMs / 1000));
+      return res.status(429).json({
+        success: false,
+        error: { code: 'RATE_LIMITED', message: 'Too many resend attempts. Please wait before trying again.' },
+      });
+    }
+
+    const userResult = await pool.query(
+      'SELECT id, email, first_name, is_verified FROM users WHERE id = $1',
+      [req.user!.userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      throw new UnauthorizedError('User not found');
+    }
+
+    const user = userResult.rows[0];
+
+    if (user.is_verified) {
+      return res.json({
+        success: true,
+        data: { message: 'Email is already verified.' },
+      });
+    }
+
+    // Upsert a new verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationTokenHash = crypto.createHash('sha256').update(verificationToken).digest('hex');
+    const verificationExpires = new Date(Date.now() + EMAIL_VERIFICATION_EXPIRY_MS);
+
+    await pool.query(
+      `INSERT INTO email_verification_tokens (user_id, token_hash, expires_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id) DO UPDATE SET token_hash = $2, expires_at = $3, created_at = NOW()`,
+      [user.id, verificationTokenHash, verificationExpires]
+    );
+
+    await sendVerificationEmail(user.email, verificationToken, user.first_name);
+
+    audit({
+      event: 'AUTH_VERIFICATION_EMAIL_RESENT',
+      userId: user.id,
+      email: maskEmail(user.email),
+      ip,
+      requestId: req.requestId,
+    });
+
+    res.json({
+      success: true,
+      data: { message: 'Verification email sent. Please check your inbox.' },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
 // CLIENT PROFILE COMPLETION
 // ═══════════════════════════════════════════════════════════════════
 
@@ -895,6 +1336,12 @@ router.post('/profile', authenticate, async (req: Request, res: Response, next: 
 
     if (role === 'worker') {
       const data = validate(workerProfileSchema, req.body);
+      let portfolioJson: string | null = null;
+      if (data.portfolio) {
+        portfolioJson = JSON.stringify(data.portfolio);
+      } else if (data.portfolioUrls) {
+        portfolioJson = JSON.stringify(data.portfolioUrls);
+      }
 
       // Update worker_profiles directly since we share the same PostgreSQL
       const params = [
@@ -906,7 +1353,7 @@ router.post('/profile', authenticate, async (req: Request, res: Response, next: 
         data.location || null,
         data.timezone || 'UTC',
         data.availability ? JSON.stringify({ types: data.availability, hours: data.hoursPerWeek, preferred: data.preferredWorkTypes }) : null,
-        data.portfolio ? JSON.stringify(data.portfolio) : (data.portfolioUrls ? JSON.stringify(data.portfolioUrls) : null),
+        portfolioJson,
         true, // is_available
         data.languages || [],
         data.resumeUrl || null,

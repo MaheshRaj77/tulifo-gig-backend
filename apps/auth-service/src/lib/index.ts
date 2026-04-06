@@ -7,4 +7,5 @@ export * from './security';
 export * from './rate-limiter';
 export * from './email';
 export * from './audit-logger';
+export * from './firebase-admin';
 export { sanitizeInput } from './sanitize.middleware';

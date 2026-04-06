@@ -52,7 +52,7 @@ export function errorHandler(
 ): void {
   logger.error({
     error: err.message,
-    stack: err.stack,
+    stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined,
     path: req.path,
     method: req.method
   });

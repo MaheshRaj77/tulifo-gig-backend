@@ -17,8 +17,17 @@ export interface RefreshTokenPayload extends TokenPayload {
   familyId: string; // Token rotation family
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret';
+if (process.env.NODE_ENV === 'production') {
+  if (!process.env.JWT_SECRET || !process.env.JWT_REFRESH_SECRET) {
+    throw new Error(
+      'FATAL: JWT_SECRET and JWT_REFRESH_SECRET must be set in production. ' +
+      'Generate them with: openssl rand -hex 64'
+    );
+  }
+}
+
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-jwt-secret-not-for-production';
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret-not-for-production';
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY = '7d';
 
